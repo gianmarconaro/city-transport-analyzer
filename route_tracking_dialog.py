@@ -27,6 +27,18 @@ import os
 from qgis.PyQt import uic
 from qgis.PyQt import QtWidgets
 
+from qgis.PyQt.QtWidgets import QFileDialog
+from qgis.PyQt.QtCore import pyqtSlot
+
+from qgis.core import Qgis
+
+from qgis.utils import iface
+
+from pathlib import Path
+
+import shutil
+
+
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'route_tracking_dialog_base.ui'))
@@ -42,3 +54,77 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
         # http://qt-project.org/doc/qt-4.8/designer-using-a-ui-file.html
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
+
+        self.pushButton.clicked.connect(self.on_click)
+        self.closeButton.clicked.connect(self.on_click_close)
+
+    # Create a function to open the file dialog and save it in the plugin folder
+    def openFileDialog(self):
+
+        # Dialog title
+        title = "Select GTFS Data"
+
+        # Starting path
+        desktop_path = os.path.join(Path.home(), "Desktop")
+        
+        # Set options
+        options = QFileDialog.Options()
+        options |= QFileDialog.DontConfirmOverwrite
+        options |= QFileDialog.DontUseNativeDialog
+
+        # Set format filters
+        filters = "GTFS Files (*.sqlite)"
+
+        # Open the dialog
+        file_name, _ = QFileDialog.getSaveFileName(self, title, desktop_path,
+                                                  filters, options=options)
+
+        if file_name:
+            return file_name
+        else:
+            self.close()
+
+    @pyqtSlot()
+    def on_click(self):
+        try:
+            # Save the file selected by the user
+            file_to_copy = self.openFileDialog()
+
+            # Check if the file is empty close the dialog 
+            while os.stat(file_to_copy).st_size == 0:
+                # Close the file dialog
+                self.close()
+                
+                # Create a message box to inform the user that the file is empty
+                messageBox = QtWidgets.QMessageBox(self)
+                messageBox.setWindowTitle("Error!")
+                messageBox.setText("<b>The file is empty!</b>\nTry with another file")
+                messageBox.exec_()
+
+                # Open the file dialog again
+                file_to_copy = self.openFileDialog()
+            
+            # Save the file in the QGIS plugin folder
+            shutil.copy(file_to_copy, os.path.join(os.path.dirname(__file__) + '/GTFS_DB/'))
+
+            # Close the entire dialog
+            self.close()
+
+            iface.messageBar().pushMessage("Success!", "GTFS Data successfully imported!", level=Qgis.Success, duration=5)
+
+            # Alternative way
+            # Create a message box to inform the user that the file has been imported
+            # messageBox = QtWidgets.QMessageBox(self)
+            # messageBox.setWindowTitle("Success!")
+            # messageBox.setText("GTFS Data successfully imported!")
+            # messageBox.exec_()
+
+        except:
+            self.close()
+            pass
+
+    def on_click_retry(self):
+        self.on_click()
+
+    def on_click_close(self):
+        self.close()
