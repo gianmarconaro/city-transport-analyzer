@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/plugins/route_tracking" >
+        <file>icon.png</file>
+    </qresource>
+</RCC>
