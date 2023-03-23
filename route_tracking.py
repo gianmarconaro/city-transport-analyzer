@@ -21,19 +21,28 @@
  *                                                                         *
  ***************************************************************************/
 """
-from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
+from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, QVariant
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
+from qgis.core import QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry, QgsPointXY, QgsWkbTypes, QgsFields, QgsField, QgsVectorFileWriter, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsMessageLog
 
-# Initialize Qt resources from file resources.py
 from .resources import *
-# Import the code for the dialog
 from .route_tracking_dialog import route_trackingDialog
 import os.path
 
+from .gtfs_db import Database
+
+import networkx as nx
+import osmnx as ox
+
+# import for the conversion of coordinates
+from pyproj import Proj, transform
 
 class route_tracking:
     """QGIS Plugin Implementation."""
+
+    # set the right path for cache folder
+    ox.config(use_cache=True, cache_folder='../../../cache')
 
     def __init__(self, iface):
         """Constructor.
@@ -67,6 +76,9 @@ class route_tracking:
         # Must be set in initGui() to survive plugin reloads
         self.first_start = None
 
+        # Save the path to the plugin folder
+        self._path = os.path.dirname(os.path.abspath(__file__))
+
     # noinspection PyMethodMayBeStatic
     def tr(self, message):
         """Get the translation for a string using Qt translation API.
@@ -82,18 +94,17 @@ class route_tracking:
         # noinspection PyTypeChecker,PyArgumentList,PyCallByClass
         return QCoreApplication.translate('route_tracking', message)
 
-
     def add_action(
-        self,
-        icon_path,
-        text,
-        callback,
-        enabled_flag=True,
-        add_to_menu=True,
-        add_to_toolbar=True,
-        status_tip=None,
-        whats_this=None,
-        parent=None):
+            self,
+            icon_path,
+            text,
+            callback,
+            enabled_flag=True,
+            add_to_menu=True,
+            add_to_toolbar=True,
+            status_tip=None,
+            whats_this=None,
+            parent=None):
         """Add a toolbar icon to the toolbar.
 
         :param icon_path: Path to the icon for this action. Can be a resource
@@ -156,7 +167,7 @@ class route_tracking:
         self.actions.append(action)
 
         return action
-
+    
     def initGui(self):
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
 
@@ -170,7 +181,6 @@ class route_tracking:
         # will be set False in run()
         self.first_start = True
 
-
     def unload(self):
         """Removes the plugin menu item and icon from QGIS GUI."""
         for action in self.actions:
@@ -179,8 +189,83 @@ class route_tracking:
                 action)
             self.iface.removeToolBarIcon(action)
 
+    def convert_into_psuedo_Mercator(self, x_coord, y_coord):
+        """Convert coordinates from WGS84 to pseudo Mercator"""
+        inProj = Proj(init='epsg:4326')
+        outProj = Proj(init='epsg:3857')
+        new_x_coord, new_y_coord = transform(inProj, outProj, x_coord, y_coord)
+        return new_x_coord, new_y_coord
+
+    def create_stops_layer(self):
+        """Create a layer with stops"""
+
+        # get all stops from database
+        database = Database()
+        stops = database.select_all_coordinates_stops()
+
+        # define fields for feature attributes. A QgsFields object is needed
+
+        fields = QgsFields()
+        fields.append(QgsField("X coord", QVariant.Int))
+        fields.append(QgsField("Y coord", QVariant.Int))
+        """ create an instance of vector file writer, which will create the vector file.
+
+        Arguments:
+        1. path to new file (will fail if exists already)
+        2. field map
+        3. geometry type - from WKBTYPE enum
+        4. layer's spatial reference (instance of QgsCoordinateReferenceSystem)
+        5. coordinate transform context
+        6. save options (driver name for the output file, encoding etc.)
+
+        """
+        crs = QgsProject.instance().crs()
+        transform_context = QgsProject.instance().transformContext()
+
+        save_options = QgsVectorFileWriter.SaveVectorOptions()
+        save_options.driverName = "ESRI Shapefile"
+        save_options.fileEncoding = "UTF-8"
+
+        writer = QgsVectorFileWriter.create(
+            self._path + "/shapefiles/stops.shp",
+            fields,
+            QgsWkbTypes.Point,
+            crs,
+            transform_context,
+            save_options
+        )
+
+        if writer.hasError() != QgsVectorFileWriter.NoError:
+            print("Error when creating shapefile: ",  writer.errorMessage())
+
+        # add a feature
+
+        for stop in stops:
+            fet = QgsFeature()
+            # convert coordinates to pseudo Mercator
+            stop = self.convert_into_psuedo_Mercator(stop[1], stop[0])
+            print(stop)
+            fet.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(stop[1], stop[0])))
+            fet.setAttributes([stop[1], stop[0]])
+            writer.addFeature(fet)
+
+        # delete the writer to flush features to disk
+
+        del writer
+
+    def load_stops_layer(self):
+        """Load stops layer"""
+
+        # Load layer
+        layer = QgsVectorLayer(self._path + "/shapefiles/stops.shp", "stops", "ogr")
+        if not layer.isValid():
+            print("Layer failed to load!")
+        else:
+            # Add layer to the registry
+            QgsProject.instance().addMapLayer(layer)
 
     def run(self):
+
         """Run method that performs all the real work"""
 
         # Create the dialog with elements (after translation) and keep reference
@@ -193,7 +278,20 @@ class route_tracking:
         self.dlg.show()
         # Run the dialog event loop
         result = self.dlg.exec_()
+        
+        # Create stops layer
+        self.create_stops_layer()
+        # Load stops layer
+        self.load_stops_layer()
         # See if OK was pressed
+        print("DAJE ROMA DAJE")
+
+        # Specify the name that is used to seach for the data
+        # place_name = "Milan, Italy"
+
+        # graph = ox.graph_from_place(place_name, network_type='drive')
+        # fig, ax = ox.plot_graph(graph)
+
         if result:
             # Do something useful here - delete the line containing pass and
             # substitute with your code.

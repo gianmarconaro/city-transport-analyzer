@@ -57,6 +57,7 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
 
         self.pushButton.clicked.connect(self.on_click)
         self.closeButton.clicked.connect(self.on_click_close)
+        self.forwardButton.clicked.connect(self.on_click_forward)
 
     # Create a function to open the file dialog and save it in the plugin folder
     def openFileDialog(self):
@@ -128,3 +129,9 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
 
     def on_click_close(self):
         self.close()
+
+    def on_click_forward(self):
+        iface.messageBar().pushMessage("Success!", "GTFS Data already imported!", level=Qgis.Success, duration=5)
+        self.close()
+
+
