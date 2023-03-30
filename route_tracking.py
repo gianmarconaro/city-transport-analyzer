@@ -24,7 +24,9 @@
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, QVariant
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
-from qgis.core import QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry, QgsPointXY, QgsWkbTypes, QgsFields, QgsField, QgsVectorFileWriter, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsMessageLog
+from qgis.core import QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry, QgsPointXY, QgsWkbTypes, QgsFields, QgsField, QgsVectorFileWriter, QgsPoint
+from qgis.gui import QgsMapToolEmitPoint
+from qgis.utils import iface
 
 from .resources import *
 from .route_tracking_dialog import route_trackingDialog
@@ -189,12 +191,164 @@ class route_tracking:
                 action)
             self.iface.removeToolBarIcon(action)
 
+
+
+
+
+
     def convert_into_psuedo_Mercator(self, x_coord, y_coord):
         """Convert coordinates from WGS84 to pseudo Mercator"""
         inProj = Proj(init='epsg:4326')
         outProj = Proj(init='epsg:3857')
         new_x_coord, new_y_coord = transform(inProj, outProj, x_coord, y_coord)
         return new_x_coord, new_y_coord
+    
+    def create_route_shapes_layer(self):
+        """Create a layer with route"""
+
+        # get all stops from database
+        database = Database()
+        route_shapes = database.select_all_coordinates_shapes()
+
+        # define fields for feature attributes. A QgsFields object is needed
+        fields_point = QgsFields()
+        fields_point.append(QgsField("X coord", QVariant.Int))
+        fields_point.append(QgsField("Y coord", QVariant.Int))
+
+        fields_line = QgsFields()
+        fields_line.append(QgsField("ID", QVariant.String))
+
+        """ create an instance of vector file writer, which will create the vector file.
+
+        Arguments:
+        1. path to new file (will fail if exists already)
+        2. field map
+        3. geometry type - from WKBTYPE enum
+        4. layer's spatial reference (instance of QgsCoordinateReferenceSystem)
+        5. coordinate transform context
+        6. save options (driver name for the output file, encoding etc.)
+
+        """
+
+        crs = QgsProject.instance().crs()
+        transform_context = QgsProject.instance().transformContext()
+
+        save_options = QgsVectorFileWriter.SaveVectorOptions()
+        save_options.driverName = "ESRI Shapefile"
+        save_options.fileEncoding = "UTF-8"
+
+        # create an instance of vector file writer, which will create the vector file.
+        writer_point = QgsVectorFileWriter.create(
+            self._path + "/shapefiles/shape_points.shp",
+            fields_point,
+            QgsWkbTypes.Point,
+            crs,
+            transform_context,
+            save_options
+        )
+
+        # writer_line = QgsVectorFileWriter.create(
+        #     self._path + "/shapefiles/shape_lines.shp",
+        #     fields_line,
+        #     QgsWkbTypes.LineString,
+        #     crs,
+        #     transform_context,
+        #     save_options
+        # )
+
+        if writer_point.hasError() != QgsVectorFileWriter.NoError:
+            print("Error when creating shapefile: ",  writer_point.errorMessage())
+
+        # if writer_line.hasError() != QgsVectorFileWriter.NoError:
+        #     print("Error when creating shapefile: ",  writer_line.errorMessage())
+
+        shape_id = ""
+        is_first_value = True
+        prev_route_shape = None
+
+        # create a feature for line
+        fet_line = QgsFeature()
+
+        # create a new memory layer
+        layer_line = QgsVectorLayer("LineString", "Shape_lines", "memory")
+        pr = layer_line.dataProvider()
+
+        # # add the geometry to the layer
+        pr.addFeatures([fet_line])
+
+        # # update extent of the layer (not necessary)
+        layer_line.updateExtents()
+        
+        pr.addFeatures([fet_line])
+        layer_line.updateExtents()
+
+        QgsProject.instance().addMapLayers([layer_line])
+
+        
+        # add a feature with geometry
+        for route_shape in route_shapes:
+            # create a feature for point
+            fet_point = QgsFeature()
+
+            # check if the shape is changed
+            if route_shape[0] != shape_id:
+                is_first_value = True
+
+            if is_first_value:
+                is_first_value = False
+                shape_id = route_shape[0]
+                prev_route_shape = route_shape
+
+                # feature for first point
+                fet_point.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(route_shape[2], route_shape[1])))
+                fet_point.setAttributes([route_shape[2], route_shape[1]])
+                writer_point.addFeature(fet_point)
+
+            else:
+                # feature for not first point
+                fet_point.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(route_shape[2], route_shape[1])))
+                fet_point.setAttributes([route_shape[2], route_shape[1]])
+                writer_point.addFeature(fet_point)
+
+                # feature for line
+                fet_line.setGeometry(QgsGeometry.fromPolylineXY([QgsPointXY(prev_route_shape[2], prev_route_shape[1]), QgsPointXY(route_shape[2], route_shape[1])]))
+                pr.addFeatures([fet_line])
+                layer_line.updateExtents()
+
+
+                # prev_route_shape deve cambiare
+                prev_route_shape = route_shape
+                
+
+                # feature for line
+                # Crasha solo con le linee, non le traccia
+                # fet_line.setGeometry(QgsGeometry.fromPolylineXY([QgsPointXY(prev_route_shape[2], prev_route_shape[1]), QgsPointXY(route_shape[2], route_shape[1])]))
+                # fet_line.setAttributes([shape_id])
+                # writer_line.addFeature(fet_line)
+
+
+
+        QgsProject.instance().addMapLayers([layer_line])
+
+        # delete the writer to flush features to disk
+        del writer_point
+        # del writer_line
+
+    def load_route_shapes_layer(self):
+        """Load route layer into QGIS"""
+        layer_point = QgsVectorLayer(self._path + "/shapefiles/shape_points.shp", "Shape_points", "ogr")
+        # layer_line = QgsVectorLayer(self._path + "/shapefiles/shape_lines.shp", "Shape_lines", "ogr")
+
+        if not layer_point.isValid():
+            print("Layer point failed to load!")
+        else:
+            QgsProject.instance().addMapLayer(layer_point)
+        
+        # if not layer_line.isValid():
+        #     print("Layer line failed to load!")
+        # else:
+        #     QgsProject.instance().addMapLayer(layer_line)
+
 
     def create_stops_layer(self):
         """Create a layer with stops"""
@@ -242,27 +396,51 @@ class route_tracking:
 
         for stop in stops:
             fet = QgsFeature()
+
             # convert coordinates to pseudo Mercator
-            stop = self.convert_into_psuedo_Mercator(stop[1], stop[0])
-            print(stop)
+            # stop = self.convert_into_psuedo_Mercator(stop[1], stop[0])
+
             fet.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(stop[1], stop[0])))
             fet.setAttributes([stop[1], stop[0]])
             writer.addFeature(fet)
 
         # delete the writer to flush features to disk
-
         del writer
 
     def load_stops_layer(self):
         """Load stops layer"""
 
         # Load layer
-        layer = QgsVectorLayer(self._path + "/shapefiles/stops.shp", "stops", "ogr")
+        layer = QgsVectorLayer(self._path + "/shapefiles/stops.shp", "Stops", "ogr")
         if not layer.isValid():
             print("Layer failed to load!")
         else:
             # Add layer to the registry
             QgsProject.instance().addMapLayer(layer)
+
+    # def load_osm_data_layer(self):
+    #     """Load OSM data layer"""
+
+    #     orig = (45.4642941, 9.1885454)
+    #     dest = (45.4678354, 9.2175573)
+
+    #     city_walk = ox.graph_from_place("Milan, Italy", network_type="walk")
+    #     # city_walk = ox.graph_from_place('Piedmont, California, USA')
+    #     # undirect_graph_walk = ox.utils_graph.get_undirected(city_walk)
+    #     fig, ax = ox.plot_graph(city_walk, node_size=0, show=False, close=False)
+
+    #     city_walk_projected = ox.project_graph(city_walk)
+    #     ox.save_graph_shapefile(city_walk_projected, filepath= self._path + "/shapefiles/osm_data.shp")
+    #     # save as geopackage
+    #     ox.save_graph_geopackage(city_walk, filepath= self._path + "/mynetwork.gpkg")
+
+    #     # route = ox.shortest_path(city_walk, orig, dest, weight="travel_time")
+    #     # fig, ax = ox.plot_graph_route(city_walk, route, node_size=0)
+    #     # fig.savefig("Milano.png",dpi=300)
+    #     # print("Travel time: ", ox.utils_graph.get_route_edge_attributes(city_walk, route, "travel_time"))
+
+
+        
 
     def run(self):
 
@@ -278,11 +456,22 @@ class route_tracking:
         self.dlg.show()
         # Run the dialog event loop
         result = self.dlg.exec_()
-        
-        # Create stops layer
-        self.create_stops_layer()
-        # Load stops layer
-        self.load_stops_layer()
+
+        # Create stops layer only if not present in shapefiles folder
+        if not os.path.exists(self._path + "/shapefiles/stops.shp") :
+            # Create stops layer
+            self.create_stops_layer()
+            # Load stops layer
+            self.load_stops_layer()
+
+        if not os.path.exists(self._path + "/shapefiles/shape_points.shp"):
+            # Create route shapes layer
+            self.create_route_shapes_layer()
+            # Load route shapes layer
+            self.load_route_shapes_layer()
+
+        # self.load_osm_data_layer()
+
         # See if OK was pressed
         print("DAJE ROMA DAJE")
 
