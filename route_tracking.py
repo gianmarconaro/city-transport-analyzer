@@ -24,7 +24,7 @@
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, QVariant
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
-from qgis.core import QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry, QgsPointXY, QgsWkbTypes, QgsFields, QgsField, QgsVectorFileWriter, QgsPoint
+from qgis.core import QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry, QgsPointXY, QgsWkbTypes, QgsFields, QgsField, QgsVectorFileWriter, QgsMarkerSymbol, QgsLineSymbol
 from qgis.gui import QgsMapToolEmitPoint
 from qgis.utils import iface
 
@@ -278,7 +278,6 @@ class route_tracking:
 
         # # update extent of the layer (not necessary)
         layer_line.updateExtents()
-        
         pr.addFeatures([fet_line])
         layer_line.updateExtents()
 
@@ -315,18 +314,8 @@ class route_tracking:
                 pr.addFeatures([fet_line])
                 layer_line.updateExtents()
 
-
                 # prev_route_shape deve cambiare
                 prev_route_shape = route_shape
-                
-
-                # feature for line
-                # Crasha solo con le linee, non le traccia
-                # fet_line.setGeometry(QgsGeometry.fromPolylineXY([QgsPointXY(prev_route_shape[2], prev_route_shape[1]), QgsPointXY(route_shape[2], route_shape[1])]))
-                # fet_line.setAttributes([shape_id])
-                # writer_line.addFeature(fet_line)
-
-
 
         QgsProject.instance().addMapLayers([layer_line])
 
@@ -392,9 +381,8 @@ class route_tracking:
         if writer.hasError() != QgsVectorFileWriter.NoError:
             print("Error when creating shapefile: ",  writer.errorMessage())
 
-        # add a feature
-
         for stop in stops:
+            # add a feature with geometry
             fet = QgsFeature()
 
             # convert coordinates to pseudo Mercator
@@ -418,32 +406,110 @@ class route_tracking:
             # Add layer to the registry
             QgsProject.instance().addMapLayer(layer)
 
-    # def load_osm_data_layer(self):
-    #     """Load OSM data layer"""
+    
+    def load_osm_data_layer(self):
+        """Load OSM data layer"""
 
-    #     orig = (45.4642941, 9.1885454)
-    #     dest = (45.4678354, 9.2175573)
+        # create a feature for line and nodes
+        fet_line = QgsFeature()
+        fet_points = QgsFeature()
 
-    #     city_walk = ox.graph_from_place("Milan, Italy", network_type="walk")
-    #     # city_walk = ox.graph_from_place('Piedmont, California, USA')
-    #     # undirect_graph_walk = ox.utils_graph.get_undirected(city_walk)
-    #     fig, ax = ox.plot_graph(city_walk, node_size=0, show=False, close=False)
+        # create a new memory layer
+        layer_line = QgsVectorLayer("LineString", "Shortest_path", "memory")
+        layer_points = QgsVectorLayer("Point", "Shortest_path", "memory")
+        pr_line = layer_line.dataProvider()
+        pr_points = layer_points.dataProvider()
 
-    #     city_walk_projected = ox.project_graph(city_walk)
-    #     ox.save_graph_shapefile(city_walk_projected, filepath= self._path + "/shapefiles/osm_data.shp")
-    #     # save as geopackage
-    #     ox.save_graph_geopackage(city_walk, filepath= self._path + "/mynetwork.gpkg")
+        # add the geometry to the layer
+        pr_line.addFeatures([fet_line])
+        pr_points.addFeatures([fet_points])
 
-    #     # route = ox.shortest_path(city_walk, orig, dest, weight="travel_time")
-    #     # fig, ax = ox.plot_graph_route(city_walk, route, node_size=0)
-    #     # fig.savefig("Milano.png",dpi=300)
-    #     # print("Travel time: ", ox.utils_graph.get_route_edge_attributes(city_walk, route, "travel_time"))
+        # update extent of the layer (not necessary)
+        layer_line.updateExtents()
+        pr_line.addFeatures([fet_line])
+        layer_line.updateExtents()
 
+        layer_points.updateExtents()
+        pr_points.addFeatures([fet_points])
+        layer_points.updateExtents()
 
+        QgsProject.instance().addMapLayers([layer_line])
+        QgsProject.instance().addMapLayers([layer_points])
+
+        # city_walk_graph = ox.graph_from_place("Milan, Italy", network_type="walk", simplify=True)
+        city_walk_graph = ox.graph_from_point((45.4719708, 9.1838459), dist=2000, network_type="walk", simplify=True)
         
+        # extract two random nodes from the graph
+        orig = ox.nearest_nodes(city_walk_graph, 9.1838459, 45.4719708)
+        dest = ox.nearest_nodes(city_walk_graph, 9.21585937, 45.45485893)
+
+        print("orig ID: ", orig)
+        print("dest ID: ", dest)
+
+        # draw the orig and dest nodes on QGIS layer
+        orig_lon = city_walk_graph.nodes[orig]['x']
+        orig_lat = city_walk_graph.nodes[orig]['y']
+
+        fet_points.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(orig_lon, orig_lat)))
+        pr_points.addFeatures([fet_points])
+        layer_points.updateExtents()
+
+        dest_lon = city_walk_graph.nodes[dest]['x']
+        dest_lat = city_walk_graph.nodes[dest]['y']
+
+        fet_points.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(dest_lon, dest_lat)))
+        pr_points.addFeatures([fet_points])
+        layer_points.updateExtents()
+
+        # change color of nodes
+        symbol = QgsMarkerSymbol.createSimple({'name': 'circle', 'color': 'green', 'size': '4'})
+        layer_points.renderer().setSymbol(symbol)
+
+        QgsProject.instance().addMapLayers([layer_points])
+        
+        # graph_from_point = ox.graph_from_point(orig, dist=5000, network_type="walk", simplify=True)
+        # compute the shortest path between the two nodes
+        route = ox.shortest_path(city_walk_graph, orig, dest, weight="length")
+        distance = 0
+        first_node = True
+
+        for node in route:
+            if first_node:
+                prev_node = node
+                first_node = False
+            else:
+                # feature for line
+                prev_node_lon = city_walk_graph.nodes[prev_node]['x']
+                prev_node_lat = city_walk_graph.nodes[prev_node]['y']
+                node_lon = city_walk_graph.nodes[node]['x']
+                node_lat = city_walk_graph.nodes[node]['y']
+
+                fet_line.setGeometry(QgsGeometry.fromPolylineXY([QgsPointXY(prev_node_lon, prev_node_lat), QgsPointXY(node_lon, node_lat)]))
+                pr_line.addFeatures([fet_line])
+                layer_line.updateExtents()
+
+                # update the node
+                prev_node = node
+        
+        # change color of line
+        symbol = QgsLineSymbol.createSimple({'color': 'red', 'width': '1'})
+        layer_line.renderer().setSymbol(symbol)
+
+        QgsProject.instance().addMapLayers([layer_line])
+                
+        # print the length of the route
+        list_length = ox.utils_graph.get_route_edge_attributes(city_walk_graph, route, "length")
+        for length in list_length:
+            distance += length
+        print("length: ", distance)
+        print("route: ", route)
+        
+        # show the route on a separate figure
+        fig, ax = ox.plot_graph_route(G=city_walk_graph, route=route, route_color="y", route_linewidth=6)
+        fig.show()
+
 
     def run(self):
-
         """Run method that performs all the real work"""
 
         # Create the dialog with elements (after translation) and keep reference
@@ -470,7 +536,7 @@ class route_tracking:
             # Load route shapes layer
             self.load_route_shapes_layer()
 
-        # self.load_osm_data_layer()
+        self.load_osm_data_layer()
 
         # See if OK was pressed
         print("DAJE ROMA DAJE")
