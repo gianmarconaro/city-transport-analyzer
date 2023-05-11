@@ -6,7 +6,7 @@ import os
 
 class Database:
     def __init__(self):
-        self._FILE_DB = "GTFS_DB/gtfs_milan.sqlite"   
+        self._FILE_DB = "GTFS_DB/gtfs_milan.db"   
         self._path = os.path.dirname(os.path.abspath(__file__)) + "/" + self._FILE_DB
         # check if the database exists
         if not os.path.isfile(self._path):
@@ -60,11 +60,41 @@ class Database:
         """
         conn = self.create_connection()
         cur = conn.cursor()
-        cur.execute("SELECT shape_id, shape_pt_lat, shape_pt_lon FROM shapes")
+        cur.execute("SELECT shape_id, shape_pt_lat, shape_pt_lon, shape_pt_sequence FROM shapes")
 
         rows = cur.fetchall()
 
         self.close_connection(conn)
         return rows
     
+    def select_all_coordinates_trips(self):
+        """
+        Query all rows in the trips table
+        :param conn: the Connection object
+        :return:
+        """
+        conn = self.create_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT route_id, trip_id, shape_id FROM trips")
+
+        rows = cur.fetchall()
+
+        self.close_connection(conn)
+        return rows
+    
+    def select_stop_times_given_trip_id(self, trip_id):
+        """
+        Query all rows in the stop_times table given a trip_id
+        :param conn: the Connection object
+        :return:
+        """
+        conn = self.create_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT stop_id, stop_sequence FROM stop_times WHERE trip_id = ?", (trip_id,))
+
+        rows = cur.fetchall()
+
+        self.close_connection(conn)
+        return rows
+
 database = Database()

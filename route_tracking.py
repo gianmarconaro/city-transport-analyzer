@@ -36,6 +36,7 @@ from .gtfs_db import Database
 
 import networkx as nx
 import osmnx as ox
+import matplotlib.pyplot as plt
 
 # import for the conversion of coordinates
 from pyproj import Proj, transform
@@ -196,19 +197,68 @@ class route_tracking:
 
 
 
-    def convert_into_psuedo_Mercator(self, x_coord, y_coord):
-        """Convert coordinates from WGS84 to pseudo Mercator"""
-        inProj = Proj(init='epsg:4326')
-        outProj = Proj(init='epsg:3857')
-        new_x_coord, new_y_coord = transform(inProj, outProj, x_coord, y_coord)
-        return new_x_coord, new_y_coord
-    
+
+
+
+
+
+
+    # def convert_into_psuedo_Mercator(self, x_coord, y_coord):
+    #     """Convert coordinates from WGS84 to pseudo Mercator"""
+    #     inProj = Proj(init='epsg:4326')
+    #     outProj = Proj(init='epsg:3857')
+    #     new_x_coord, new_y_coord = transform(inProj, outProj, x_coord, y_coord)
+    #     return new_x_coord, new_y_coord
+
+    # create a graph that represents the route with networkx
+    def create_graph_for_route(self, routes):
+        """Create a graph that represents the route with networkx"""
+
+        shape_id = ""
+        is_first_value = True
+
+        # new empty graph
+        graph = nx.Graph()
+
+        for shape in routes:
+            # check if is the first value
+            if shape[0] != shape_id:
+                is_first_value = True
+
+            if is_first_value:
+                shape_id = shape[0]
+                is_first_value = False
+
+                # update previous shape
+                prev_shape = shape
+
+                # add first node to graph
+                graph.add_node(shape[0] + "_" + str(shape[3]), x_coord=shape[2], y_coord=shape[1])
+
+            else:
+                # add node to graph
+                graph.add_node(shape[0] + "_" + str(shape[3]), x_coord=shape[2], y_coord=shape[1])
+
+                # add edge to graph
+                graph.add_edge(prev_shape[0] + "_" + str(prev_shape[3]), shape[0] + "_" + str(shape[3]))
+
+                # update previous shape
+                prev_shape = shape
+
+        # draw the graph for debugging
+        pos = {node: (graph.nodes[node]['x_coord'], graph.nodes[node]['y_coord']) for node in graph.nodes()}
+        nx.draw(graph, pos=pos, with_labels=False, node_size=10, font_size=8, node_color='r')
+        plt.show()
+
+
     def create_route_shapes_layer(self):
         """Create a layer with route"""
 
         # get all stops from database
         database = Database()
         route_shapes = database.select_all_coordinates_shapes()
+
+        self.create_graph_for_route(route_shapes)
 
         # define fields for feature attributes. A QgsFields object is needed
         fields_point = QgsFields()
@@ -283,7 +333,6 @@ class route_tracking:
 
         QgsProject.instance().addMapLayers([layer_line])
 
-        
         # add a feature with geometry
         for route_shape in route_shapes:
             # create a feature for point
@@ -332,6 +381,7 @@ class route_tracking:
             print("Layer point failed to load!")
         else:
             QgsProject.instance().addMapLayer(layer_point)
+            # QgsProject.instance().addMapLayer(layer_line)
         
         # if not layer_line.isValid():
         #     print("Layer line failed to load!")
