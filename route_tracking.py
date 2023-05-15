@@ -36,7 +36,9 @@ from .gtfs_db import Database
 
 import networkx as nx
 import osmnx as ox
+import math
 import matplotlib.pyplot as plt
+import random
 
 # import for the conversion of coordinates
 from pyproj import Proj, transform
@@ -192,17 +194,6 @@ class route_tracking:
                 action)
             self.iface.removeToolBarIcon(action)
 
-
-
-
-
-
-
-
-
-
-
-
     # def convert_into_psuedo_Mercator(self, x_coord, y_coord):
     #     """Convert coordinates from WGS84 to pseudo Mercator"""
     #     inProj = Proj(init='epsg:4326')
@@ -211,6 +202,76 @@ class route_tracking:
     #     return new_x_coord, new_y_coord
 
     # create a graph that represents the route with networkx
+
+
+    def find_reachable_nodes(self, graph, start_node, cost_limit):
+        """Return all the reachable node from the starting point with a cost limit"""
+
+        # initialize queue with the starting node and the cost
+        queue = [(start_node, 0)]
+
+        # initialize visited nodes with the starting node
+        visited_nodes = set([start_node])
+
+        # initialize reachable nodes
+        reachable_nodes = set()
+
+        while queue:
+            # get the current node without the cost
+            current_node, current_cost = queue.pop(0)
+            
+            reachable_nodes.add(current_node)
+
+            neighbors = graph.neighbors(current_node)
+
+            # explore all the neighbors
+            for neighbor in neighbors:
+                if neighbor not in visited_nodes:
+                    visited_nodes.add(neighbor)
+                    edge_cost = graph[current_node][neighbor]['weight']
+                    queue.append((neighbor, current_cost + edge_cost))
+                
+                else:
+                    pass
+                    
+
+
+
+    def visit_all_reachable_nodes(self, graph, start_node, max_cost):
+        """Save all reachable nodes from start_node and calculate the total cost of the route. Be sure that the total cost does not exceed the max_cost. Return the reachable nodes and the total cost of the route."""
+            
+        # initialize variables
+        total_cost = 0
+        reachable_nodes = []
+
+        # add start node to reachable nodes
+        reachable_nodes.append(start_node)
+
+        # get all neighbors of start node
+        neighbors = graph.neighbors(start_node)
+
+        # loop through all neighbors
+        for neighbor in neighbors:
+            # get the cost of the edge
+            edge_cost = graph[start_node][neighbor]['weight']
+
+            # add edge cost to total cost
+            total_cost += edge_cost
+
+            # check if the total cost is smaller than the max cost
+            if total_cost <= max_cost:
+                # add neighbor to reachable nodes
+                reachable_nodes.append(neighbor)
+
+        # return reachable nodes and total cost
+        return reachable_nodes, total_cost
+
+
+
+    def calculate_euclidean_distance(self, point_1, point_2):
+        """Calculate the euclidean distance between two points"""
+        return math.sqrt((point_2[0] - point_1[0]) ** 2 + (point_2[1] - point_1[1]) ** 2)
+
     def create_graph_for_route(self, routes):
         """Create a graph that represents the route with networkx"""
 
@@ -219,6 +280,7 @@ class route_tracking:
 
         # new empty graph
         graph = nx.Graph()
+        graph.graph['crs'] = 'EPSG:4326'
 
         for shape in routes:
             # check if is the first value
@@ -239,17 +301,25 @@ class route_tracking:
                 # add node to graph
                 graph.add_node(shape[0] + "_" + str(shape[3]), x_coord=shape[2], y_coord=shape[1])
 
-                # add edge to graph
-                graph.add_edge(prev_shape[0] + "_" + str(prev_shape[3]), shape[0] + "_" + str(shape[3]))
+                # calculate euclidean distance between previous shape and current shape
+                euclidean_distance = self.calculate_euclidean_distance((prev_shape[2], prev_shape[1]), (shape[2], shape[1]))
+
+                # add edge to graph with euclidean distance as weight
+                graph.add_edge(prev_shape[0] + "_" + str(prev_shape[3]), shape[0] + "_" + str(shape[3]), weight=euclidean_distance)
 
                 # update previous shape
                 prev_shape = shape
+        
+        # print one node for debugging
+        # print(list(graph.nodes(data=True))[0])
+        # print one edge for debugging
+        # print(list(graph.edges(data=True))[0])
 
         # draw the graph for debugging
-        pos = {node: (graph.nodes[node]['x_coord'], graph.nodes[node]['y_coord']) for node in graph.nodes()}
-        nx.draw(graph, pos=pos, with_labels=False, node_size=10, font_size=8, node_color='r')
-        plt.show()
-
+        # pos = {node: (graph.nodes[node]['x_coord'], graph.nodes[node]['y_coord']) for node in graph.nodes()}
+        # nx.draw(graph, pos=pos, with_labels=False, node_size=10, font_size=8, node_color='r')
+        # plt.show()
+        return graph
 
     def create_route_shapes_layer(self):
         """Create a layer with route"""
@@ -258,7 +328,14 @@ class route_tracking:
         database = Database()
         route_shapes = database.select_all_coordinates_shapes()
 
-        self.create_graph_for_route(route_shapes)
+        routes_graph = self.create_graph_for_route(route_shapes)
+        # print random node for debugging
+        print(random.choice(list(routes_graph.nodes(data=True))))
+        # take a random node but only the id
+        orig_id = random.choice(list(routes_graph.nodes(data=False)))
+        reachable_nodes, total_cost = self.visit_all_reachable_nodes(routes_graph, orig_id, 1500)
+        print("reachable_nodes1: ", reachable_nodes)
+        print("total_cost1: ", total_cost)
 
         # define fields for feature attributes. A QgsFields object is needed
         fields_point = QgsFields()
@@ -388,7 +465,6 @@ class route_tracking:
         # else:
         #     QgsProject.instance().addMapLayer(layer_line)
 
-
     def create_stops_layer(self):
         """Create a layer with stops"""
 
@@ -456,7 +532,33 @@ class route_tracking:
             # Add layer to the registry
             QgsProject.instance().addMapLayer(layer)
 
-    
+
+    def shortest_path_to_all_nodes(self, graph, source_node, cost_limit):
+        """Find shortest path to all nodes from source node within a cost limit"""
+
+        # initialize the list of reachable nodes
+        reachable_nodes = set([source_node])
+
+        # find all nodes
+        nodes = list(graph.nodes)
+
+        print("Nodes: ")
+        print(type(nodes))
+        print(nodes)
+        for node in nodes:
+            distance = 0
+            
+            # find shortest path from source node to node
+            route = ox.shortest_path(G=graph, orig=source_node, dest=node, weight='length')
+            list_length = ox.utils_graph.get_route_edge_attributes(graph, route, "length")
+            for length in list_length:
+                distance += length
+
+            if distance <= cost_limit:
+                reachable_nodes.add(node)
+
+        return reachable_nodes
+
     def load_osm_data_layer(self):
         """Load OSM data layer"""
 
@@ -492,6 +594,10 @@ class route_tracking:
         # extract two random nodes from the graph
         orig = ox.nearest_nodes(city_walk_graph, 9.1838459, 45.4719708)
         dest = ox.nearest_nodes(city_walk_graph, 9.21585937, 45.45485893)
+
+        reachable_nodes = self.shortest_path_to_all_nodes(city_walk_graph, orig, 1500)
+        print("reachable nodes: ")
+        print(reachable_nodes)
 
         print("orig ID: ", orig)
         print("dest ID: ", dest)
