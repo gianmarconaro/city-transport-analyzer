@@ -21,11 +21,11 @@
  *                                                                         *
  ***************************************************************************/
 """
-from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, QVariant
-from qgis.PyQt.QtGui import QIcon
+from qgis.PyQt.QtCore import Qt, QSettings, QTranslator, QCoreApplication, QVariant, QTimer
+from qgis.PyQt.QtGui import QIcon, QCursor, QColor
 from qgis.PyQt.QtWidgets import QAction
-from qgis.core import QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry, QgsPointXY, QgsWkbTypes, QgsFields, QgsField, QgsVectorFileWriter, QgsMarkerSymbol, QgsLineSymbol, QgsSingleSymbolRenderer
-from qgis.gui import QgsMapToolEmitPoint
+from qgis.core import QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry, QgsPointXY, QgsWkbTypes, QgsFields, QgsField, QgsVectorFileWriter, QgsMarkerSymbol, QgsLineSymbol, QgsSingleSymbolRenderer, QgsFillSymbol, QgsDistanceArea, QgsUnitTypes
+from qgis.gui import QgsMapToolEmitPoint, QgsMapMouseEvent
 from qgis.utils import iface
 
 from .resources import *
@@ -34,13 +34,11 @@ import os.path
 
 from .gtfs_db import Database
 
+from collections import defaultdict
 import networkx as nx
 import osmnx as ox
 import matplotlib.pyplot as plt
-import random
-
-# import for the conversion of coordinates
-from pyproj import Proj, transform
+import datetime
 
 class route_tracking:
     """QGIS Plugin Implementation."""
@@ -200,7 +198,14 @@ class route_tracking:
 
 
     def create_graph_for_routes(self, routes):
-        """Create a graph that represents the route with networkx"""
+        """Create a graph that represents the route with networkx.
+        shape = [shape_id, shape_pt_lat, shape_pt_lon, shape_pt_sequence]"""
+        
+        # TODO: change shape with clear name
+
+        # check if routes is empty
+        if not routes:
+            return "Error: routes is empty"
 
         shape_id = ""
         is_first_value = True
@@ -258,9 +263,9 @@ class route_tracking:
         # define point fields for feature attributes
         fields_point = QgsFields()
         fields_point.append(QgsField("ID", QVariant.String))
-        fields_point.append(QgsField("Sequence", QVariant.Int))
         fields_point.append(QgsField("X", QVariant.Double))
         fields_point.append(QgsField("Y", QVariant.Double))
+        fields_point.append(QgsField("Sequence", QVariant.Int))
 
         # define line fields for feature attributes
         fields_line = QgsFields()
@@ -361,7 +366,7 @@ class route_tracking:
         layer_line = QgsProject.instance().mapLayersByName(layer_name_lines)[0]
 
         # define style layer for points
-        self.change_style_layer(layer_point, 'circle', 'gray', '0.5', None)
+        self.change_style_layer(layer_point, 'circle', 'gray', '1.0', None)
 
         # define style layer for lines
         self.change_style_layer(layer_line, None, 'gray', None, '0.5')
@@ -397,9 +402,21 @@ class route_tracking:
         # define fields for feature attributes
         fields = QgsFields()
         fields.append(QgsField("ID", QVariant.String))
-        fields.append(QgsField("Name", QVariant.String))
+        fields.append(QgsField("Stop_name", QVariant.String))
         fields.append(QgsField("X", QVariant.Double))
         fields.append(QgsField("Y", QVariant.Double))
+        fields.append(QgsField("Wheelchair_boarding", QVariant.Int))
+
+        # fields.append(QgsField("Arrival_time", QVariant.DateTime))
+        # fields.append(QgsField("Departure_time", QVariant.DateTime))
+        # fields.append(QgsField("Stop_sequence", QVariant.Int))
+
+        # fields.append(QgsField("Trip_id", QVariant.String))
+        # fields.append(QgsField("Trip_headsign", QVariant.String))
+
+        # fields.append(QgsField("Route_short_name", QVariant.String))
+        # fields.append(QgsField("Route_long_name", QVariant.String))
+        # fields.append(QgsField("Route_type", QVariant.Int))
 
         # define name and path
         layer_name = "stops"
@@ -420,10 +437,29 @@ class route_tracking:
         if writer.hasError() != QgsVectorFileWriter.NoError:
             print("Error when creating shapefile: ",  writer.errorMessage())
 
+        printed = True
+
         for stop in stops:
+            
+            # stop information
+            stop_id = stop[0]
+            stop_name = stop[1]
+            x_coord = stop[3]
+            y_coord = stop[2]
+            wheelchair_boarding = stop[4]
+
+            # print information about the stop
+            if not printed:
+                print("Stop ID: ", stop_id)
+                print("Stop name: ", stop_name)
+                print("X: ", x_coord)
+                print("Y: ", y_coord)
+                print("Wheelchair boarding: ", wheelchair_boarding)
+                printed = True
+
             # add a feature with geometry
             fet = QgsFeature()
-            fet.setAttributes([stop[0], stop[1], stop[3], stop[2]])
+            fet.setAttributes([stop_id, stop_name, x_coord, y_coord, wheelchair_boarding])
 
             # create geometry
             point = QgsPointXY(stop[3], stop[2])
@@ -431,7 +467,12 @@ class route_tracking:
             fet.setGeometry(geometry)
 
             # add the geometry to the layer
-            writer.addFeature(fet)            
+            writer.addFeature(fet)
+
+        # takes all the stop id and then make a query to retrieve short name of the transport passing by all the stops id
+        # result[0] -> stop_id
+        # result[1] -> short_name
+                   
 
         # delete the writer to flush features to disk
         del writer
@@ -444,7 +485,7 @@ class route_tracking:
 
         # set layer style
         self.change_style_layer(layer, 'square', 'green', '2', None)
-        
+
     def load_stops_layer(self, layer_path, layer_name):
         """Load stops layer"""
 
@@ -455,6 +496,16 @@ class route_tracking:
         else:
             # Add layer to the registry
             project.addMapLayer(layer)
+
+    def get_vehicle_type(route_id):
+        if route_id.startswith("T"):
+            return "Tram"
+        elif route_id.startswith("B"):
+            return "Bus"
+        elif route_id.startswith("M"):
+            return "Metropolitana"
+        else:
+            return "Altro"
 
     def change_style_layer(self, layer_name, name, color, size, width):
         """Change style of a layer"""
@@ -469,6 +520,123 @@ class route_tracking:
 
         renderer = QgsSingleSymbolRenderer(symbol)
         layer_name.setRenderer(renderer)
+
+    def create_pedestrian_layer(self):
+        """Create a layer with pedestrian"""
+
+        # import from osmnx the graph of the city with pedestrian network
+        place_name = "Milano, Lombardia, Italia"
+        pedestrian_graph = ox.graph_from_place(place_name, network_type="walk")
+
+        # define name and path
+        layer_name = "pedestrian_graph"
+        layer_path = self._path + "/shapefiles/pedestrian_graph.gpkg"
+
+        # import and save it as a layer
+        ox.save_graph_geopackage(pedestrian_graph, filepath=layer_path, directed=False)
+
+        # load layer
+        self.load_pedestrian_layer(layer_path, layer_name)
+
+    def load_pedestrian_layer(self, layer_path, layer_name):
+        """Load pedestrian layer"""
+
+        project = QgsProject.instance()
+        layer = QgsVectorLayer(layer_path + "|layername=edges", layer_name, "ogr")
+        print(type(layer))
+        if not layer.isValid():
+            print("Layer failed to load!")
+        else:
+            # Add layer to the registry
+            project.addMapLayer(layer)
+
+    def get_nearby_stops(self, layer_name, x_coord, y_coord, distance):
+        """Get nearby stops"""
+
+        # obtain layer and crs
+        project = QgsProject.instance()
+        stops_layer = project.mapLayersByName(layer_name)[0]
+        crs = stops_layer.crs()
+
+        # create distance area
+        distance_area = QgsDistanceArea()
+        distance_area.setSourceCrs(stops_layer.crs(), project.transformContext())
+        distance_area.setEllipsoid(project.ellipsoid())
+
+        # convert distance from meters to degrees
+        print(distance)
+        distance_degrees = distance_area.convertLengthMeasurement(distance, QgsUnitTypes.DistanceUnit.Degrees)
+        print(distance_degrees)
+
+        # create starting point
+        starting_point = QgsPointXY(x_coord, y_coord)
+        geometry = QgsGeometry.fromPointXY(starting_point)
+
+        # create a circular buffer
+        circular_buffer = geometry.buffer(distance_degrees, segments=32)
+
+        # create new feature to store the circular buffer
+        circular_feature = QgsFeature()
+        circular_feature.setGeometry(circular_buffer)
+        print(circular_buffer)
+
+        # add the circular buffer to the layer
+        circular_buffer_layer = QgsVectorLayer("Polygon?crs=" + crs.authid(), "circular_buffer", "memory")
+        circular_buffer_layer.dataProvider().addFeatures([circular_feature])
+
+        # change style of the layer
+        fill_symbol = QgsFillSymbol.createSimple({'color': 'cyan', 'outline_color': 'black', 'outline_width': '0.5', 'style': 'solid'})
+        fill_symbol.setColor(QColor(0, 255, 255, 80))
+        circular_buffer_layer.renderer().setSymbol(fill_symbol)
+
+        # create a temporary new layer to store all the selected stops
+        selected_stops_layer = QgsVectorLayer("Point?crs=" + crs.authid(), "selected_stops", "memory")
+
+        # add fields to the layer
+        fields = QgsFields()
+        fields.append(QgsField("ID", QVariant.String))
+        fields.append(QgsField("Stop_name", QVariant.String))
+
+        # add fields to the layer
+        selected_stops_layer.dataProvider().addAttributes(fields)
+
+        # start editing the layer
+        selected_stops_layer.startEditing()
+
+        # iterate over the features of the original layer
+        for feature in stops_layer.getFeatures():
+            stop_point = feature.geometry()
+            
+            # check if the stop is inside the circular buffer
+            if circular_buffer.contains(stop_point):
+                # create a new feature
+                new_feature = QgsFeature(selected_stops_layer.fields())
+                new_feature.setGeometry(stop_point)
+                new_feature.setAttributes([feature["ID"], feature["Stop_name"]])
+
+                # add the feature to the layer
+                selected_stops_layer.addFeature(new_feature)
+        
+        # commit changes
+        selected_stops_layer.commitChanges()
+
+        # load layer
+        project.addMapLayer(selected_stops_layer)
+        project.addMapLayer(circular_buffer_layer)
+
+        # set layer style
+        self.change_style_layer(selected_stops_layer, 'square', 'yellow', '2', None)
+
+        # return the selected stops
+        selected_stops = [feature for feature in selected_stops_layer.getFeatures()]
+        print("Selected stops: ")
+        print(selected_stops)
+        return selected_stops
+
+
+
+        
+
 
     '''Sostituisci questa funzione con le isocrone di OSM'''
     def shortest_path_to_all_nodes(self, graph, source_node, cost_limit):
@@ -511,10 +679,15 @@ class route_tracking:
         # Create stops layer only if not present in shapefiles folder
         if not os.path.exists(self._path + "/shapefiles/stops.shp") :
             self.create_stops_layer()
-
+            
         # Create route shapes layer only if not present in shapefiles folder
         if not os.path.exists(self._path + "/shapefiles/shape_points.shp" or self._path + "/shapefiles/shape_lines.shp"):
             self.create_route_shapes_layer()
+
+        if not os.path.exists(self._path + "/shapefiles/pedestrian_graph.gpkg"):
+            self.create_pedestrian_layer()
+
+        self.get_nearby_stops("stops", 9.1940190, 45.4571958, 500)
 
         # See if OK was pressed
         print("DAJE ROMA DAJE")
