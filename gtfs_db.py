@@ -51,6 +51,21 @@ class Database:
 
         self.close_connection(conn)
         return rows
+
+    def select_all_coordinates_shapes(self):
+        """
+        Query all rows in the shapes table
+        :param conn: the Connection object
+        :return:
+        """
+        conn = self.create_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT shape_id, shape_pt_lat, shape_pt_lon, shape_pt_sequence FROM shapes")
+
+        rows = cur.fetchall()
+
+        self.close_connection(conn)
+        return rows 
     
     # def select_timetables_given_stop_id(self, stop_id):
     #     """
@@ -122,21 +137,31 @@ class Database:
         self.close_connection(conn)
         return rows
     
-    def select_all_coordinates_shapes(self):
+    def select_transport_using_shape_id(self, shape_id):
         """
-        Query all rows in the shapes table
+        Query 
         :param conn: the Connection object
         :return:
         """
         conn = self.create_connection()
         cur = conn.cursor()
-        cur.execute("SELECT shape_id, shape_pt_lat, shape_pt_lon, shape_pt_sequence FROM shapes")
+        cur.execute("""
+            SELECT DISTINCT route_id
+            FROM trips AS tr
+            JOIN shapes AS sh ON tr.shape_id = sh.shape_id
+            WHERE sh.shape_id = ?
+            """, (shape_id,))
 
         rows = cur.fetchall()
 
         self.close_connection(conn)
         return rows
-    
+
+
+
+
+
+
     def select_next_arrival_and_departure_time_for_each_transport(self, stop_id, short_name, current_time):
         """
         Query all rows in the stops table
