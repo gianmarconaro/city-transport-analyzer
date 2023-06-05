@@ -137,7 +137,7 @@ class Database:
         self.close_connection(conn)
         return rows
     
-    def select_transport_using_shape_id(self, shape_id):
+    def select_transport_by_shape_id(self, shape_id):
         """
         Query 
         :param conn: the Connection object

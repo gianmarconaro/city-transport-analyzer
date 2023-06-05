@@ -38,7 +38,8 @@ from collections import defaultdict
 import networkx as nx
 import osmnx as ox
 import matplotlib.pyplot as plt
-import datetime
+import pprint as pp
+import geopandas as gpd
 
 class route_tracking:
     """QGIS Plugin Implementation."""
@@ -197,28 +198,31 @@ class route_tracking:
 
 
 
-    def create_graph_for_routes(self, routes: list):
+
+
+    def create_graph_for_routes(self):
         """Create a graph that represents the route with networkx.
         shape = [shape_id, shape_pt_lat, shape_pt_lon, shape_pt_sequence]"""
+
+        print("Creating graph for routes...")
         
         database = Database()
-        # TODO: change shape with clear name
+        shapes = database.select_all_coordinates_shapes()
 
         # check if routes is empty
-        if not routes:
+        if not shapes:
             return "Error: routes is empty"
+        
+        graph_path = self._path + "/graphs/routes_graph.gpkg"
 
         shape_id = ""
         is_first_value = True
 
         # new networkx graph
-        graph = nx.DiGraph()
-        graph.graph['crs'] = 'EPSG:4326'
+        G = nx.MultiDiGraph()
+        G.graph['crs'] = 'EPSG:4326'
 
-        counter = 0
-        printed = False
-
-        for shape in routes:
+        for shape in shapes:
             # check if is the first value
             if shape[0] != shape_id:
                 is_first_value = True
@@ -228,84 +232,146 @@ class route_tracking:
                 is_first_value = False
 
                 # select all transports using the shape_id
-                # if not printed:
-                #     transports = database.select_transport_using_shape_id(shape_id)
-                #     print(shape_id, transports)
-                #     counter =+ 1
-                # if counter == 15:
-                #     printed = True
+                transport = database.select_transport_by_shape_id(shape_id)
+                transport = str(transport[0][0])
 
                 # update previous shape
                 prev_shape = shape
 
                 # add first node to graph
-                graph.add_node(shape[0] + "_" + str(shape[3]), lon=shape[2], lat=shape[1])
+                G.add_node(shape[0] + "_" + str(shape[3]), x=shape[2], y=shape[1], is_stop=False)
 
             else:
                 # add node to graph
-                graph.add_node(shape[0] + "_" + str(shape[3]), lon=shape[2], lat=shape[1])
+                G.add_node(shape[0] + "_" + str(shape[3]), x=shape[2], y=shape[1], is_stop=False)
 
                 # calculate euclidean distance between previous shape and current shape
                 euclidean_distance = ox.distance.euclidean_dist_vec(prev_shape[2], prev_shape[1], shape[2], shape[1])
 
                 # add edge to graph with euclidean distance as weight
-                graph.add_edge(prev_shape[0] + "_" + str(prev_shape[3]), shape[0] + "_" + str(shape[3]), weight=euclidean_distance)
+                starting_node = prev_shape[0] + "_" + str(prev_shape[3])
+                ending_node = shape[0] + "_" + str(shape[3])
+                G.add_edge(starting_node, ending_node, weight=euclidean_distance, transport=transport)
 
                 # update previous shape
                 prev_shape = shape
-        
-        # print one node for debugging
-        # print(list(graph.nodes(data=True))[0])
-        # print one edge for debugging
-        # print(list(graph.edges(data=True))[0])
 
-        # draw the graph for debugging
-        # pos = {node: (graph.nodes[node]['x_coord'], graph.nodes[node]['y_coord']) for node in graph.nodes()}
-        # nx.draw(graph, pos=pos, with_labels=False, node_size=10, font_size=8, node_color='r')
-        # plt.show()
+        print("Graph created!")
+
+        G = self.modify_graph(G)
+
+        # import and save it as a GeoPackage file
+        print("Saving graph as GeoPackage file...")
+
+        ox.save_graph_geopackage(G, filepath=graph_path)
+
+        print("Graph saved!")
+
+        self.get_subgraphs(G)
+
+    def load_routes_layer(self, layer_path: str, layer_name: str):
+        """Load pedestrian layer"""
+
+        print("Loading route graph...")
+
+        project = QgsProject.instance()
+        layer_point = QgsVectorLayer(layer_path + "|layername=nodes", layer_name, "ogr")
+        layer_line = QgsVectorLayer(layer_path + "|layername=edges", layer_name, "ogr")
+        if not layer_point.isValid() or not layer_line.isValid():
+            print("Layer failed to load!")
+        else:
+            # Add layer to the registry
+            print("Route graph loaded!")
+            project.addMapLayer(layer_point)
+            project.addMapLayer(layer_line)
+
+    def modify_graph(self, G: nx.MultiDiGraph):
+        """Modifies the graph `G` by merging nodes with the same coordinates and merging stops with the graph."""
+
+        print("Modifying graph...")
 
         # Create a dictionary of coordinates
         coords = defaultdict(list)
-        for node, data in graph.nodes(data=True):
-            coords[(data["lon"], data["lat"])].append(node)
+        for node, data in G.nodes(data=True):
+            coords[(data['x'], data['y'])].append(node)
 
-        # print the first 10 items of the dictionary for debugging
-        print(list(coords.items())[:10])
-
-        printed = False
         # Merge nodes with the same coordinates
+        print("Merging nodes with same coordinates...")
         for coord, nodes in coords.items():
-            if not printed:
-                print(coord, nodes)
-                printed = True
             if len(nodes) > 1:
-                self.merge_graph_nodes_with_same_coordinates(graph, nodes, coord)
+                self.merge_graph_nodes_with_same_coordinates(G, nodes, coord)
+        print("Nodes merged!")
         
-        # print one merged node for debugging from dictionary
+        # Merge stops with the graph
+        # print("Merging stops with the graph...")
+        # self.merge_stops_with_graph(G)
+        # print("Stops merged!")
 
-        return graph
+        print("Graph modified!")
+
+        return G
     
-    def merge_graph_nodes_with_same_coordinates(self, graph: nx.DiGraph, nodes: list, coord: tuple):
-        """Merges the selected `nodes` in the graph `G` into one `new_node`, considering edge directions."""
+    # def merge_graph_nodes_with_same_coordinates(self, G: nx.DiGraph, nodes: list, coord: tuple):
+    #     """Merges the selected `nodes` in the graph `G` into one `new_node`, considering edge directions."""
+
+    #     # id of the new node is the concatenation of the ids of the merged nodes
+    #     node_id = '-'.join(nodes)
+
+    #     # add the new node to the graph
+    #     G.add_node(node_id, x=coord[0], y=coord[1], isStop=False)
+
+    #     # add edges to the new node
+    #     for node in nodes:
+    #         for pred in G.predecessors(node):
+    #             euclidean_distance = ox.distance.euclidean_dist_vec(G.nodes[pred]['x'], G.nodes[pred]['y'], G.nodes[node]['x'], G.nodes[node]['y'])
+    #             G.add_edge(pred, node_id, weight=euclidean_distance, transport=G.edges[pred, node]['transport'])
+    #         for succ in G.successors(node):
+    #             euclidean_distance = ox.distance.euclidean_dist_vec(G.nodes[node]['x'], G.nodes[node]['y'], G.nodes[succ]['x'], G.nodes[succ]['y'])
+    #             G.add_edge(node_id, succ, weight=euclidean_distance, transport=G.edges[node, succ]['transport'])
+    #         G.remove_node(node)
+
+    def merge_graph_nodes_with_same_coordinates(self, G: nx.MultiDiGraph, nodes: list, coord: tuple):
+        """Merge the selected `nodes` in the graph `G` into one `new_node`, considering edge directions."""
 
         # id of the new node is the concatenation of the ids of the merged nodes
         node_id = '-'.join(nodes)
 
         # add the new node to the graph
-        graph.add_node(node_id, lon=coord[0], lat=coord[1])
+        G.add_node(node_id, x=coord[0], y=coord[1], is_stop=False)
 
         # add edges to the new node
         for node in nodes:
-            for pred in graph.predecessors(node):
-                euclidean_distance = ox.distance.euclidean_dist_vec(graph.nodes[pred]['lon'], graph.nodes[pred]['lat'], graph.nodes[node]['lon'], graph.nodes[node]['lat'])
-                graph.add_edge(pred, node_id, weight=euclidean_distance)
-            for succ in graph.successors(node):
-                euclidean_distance = ox.distance.euclidean_dist_vec(graph.nodes[node]['lon'], graph.nodes[node]['lat'], graph.nodes[succ]['lon'], graph.nodes[succ]['lat'])
-                graph.add_edge(node_id, succ, weight=euclidean_distance)
-            graph.remove_node(node)
+            edges_out = G.edges(node, data=True, keys=True)
+            edges_in = G.in_edges(node, data=True, keys=True)
+
+            for u, v, k, data in edges_out:
+                G.add_edge(node_id, v, key=k, **data)
+            
+            for u, v, k, data in edges_in:
+                G.add_edge(u, node_id, key=k, **data)
+            G.remove_node(node) 
+
+    def merge_stops_with_graph(self, G: nx.MultiDiGraph):
+        """Merges the stops with the graph."""
+
+        database = Database()
+        stops = database.select_all_coordinates_stops()
+
+        stops_nearest_nodes = []
+
+        for stop in stops: 
+            # get nearest node and add it to the list
+            nearest_node = ox.nearest_nodes(G, stop[3], stop[2])
+            stops_nearest_nodes.append(nearest_node)
+
+        for node in G.nodes():
+            if node in stops_nearest_nodes:
+                G.nodes[node]['is_stop'] = True
 
     def create_route_shapes_layer(self):
         """Create a layer with route"""
+
+        print("Creating route shapes layer...")
 
         # get all shapes from database
         database = Database()
@@ -423,6 +489,8 @@ class route_tracking:
         # define style layer for lines
         self.change_style_layer(layer_line, None, 'gray', None, '0.5')
 
+        print("Route shapes layer created!")
+
     def load_route_shapes_points_layer(self):
         """Load route layer into QGIS"""
 
@@ -447,6 +515,8 @@ class route_tracking:
 
     def create_stops_layer(self):
         """Create a layer with stops"""
+
+        print("Creating stops layer...")
 
         database = Database()
         stops = database.select_all_coordinates_stops()
@@ -489,8 +559,6 @@ class route_tracking:
         if writer.hasError() != QgsVectorFileWriter.NoError:
             print("Error when creating shapefile: ",  writer.errorMessage())
 
-        printed = True
-
         for stop in stops:
             
             # stop information
@@ -499,15 +567,6 @@ class route_tracking:
             lon = stop[3]
             lat = stop[2]
             wheelchair_boarding = stop[4]
-
-            # print information about the stop
-            if not printed:
-                print("Stop ID: ", stop_id)
-                print("Stop name: ", stop_name)
-                print("Lon: ", lon)
-                print("Lat: ", lat)
-                print("Wheelchair boarding: ", wheelchair_boarding)
-                printed = True
 
             # add a feature with geometry
             fet = QgsFeature()
@@ -538,6 +597,8 @@ class route_tracking:
         # set layer style
         self.change_style_layer(layer, 'square', 'green', '2', None)
 
+        print("Stops layer created!")
+
     def load_stops_layer(self, layer_path: str, layer_name: str):
         """Load stops layer"""
 
@@ -548,16 +609,6 @@ class route_tracking:
         else:
             # Add layer to the registry
             project.addMapLayer(layer)
-
-    def get_vehicle_type(route_id: int):
-        if route_id.startswith("T"):
-            return "Tram"
-        elif route_id.startswith("B"):
-            return "Bus"
-        elif route_id.startswith("M"):
-            return "Metropolitana"
-        else:
-            return "Altro"
 
     def change_style_layer(self, layer_name: str, name: str, color: str, size: str, width: str):
         """Change style of a layer"""
@@ -576,16 +627,20 @@ class route_tracking:
     def create_pedestrian_layer(self):
         """Create a layer with pedestrian"""
 
+        print("Creating pedestrian graph...")
+
         # import from osmnx the graph of the city with pedestrian network
         place_name = "Milano, Lombardia, Italia"
         pedestrian_graph = ox.graph_from_place(place_name, network_type="walk")
 
         # define name and path
         layer_name = "pedestrian_graph"
-        layer_path = self._path + "/shapefiles/pedestrian_graph.gpkg"
+        layer_path = self._path + "/graphs/pedestrian_graph.gpkg"
 
         # import and save it as a layer
         ox.save_graph_geopackage(pedestrian_graph, filepath=layer_path, directed=False)
+
+        print("Pedestrian graph created!")
 
         # load layer
         self.load_pedestrian_layer(layer_path, layer_name)
@@ -593,17 +648,21 @@ class route_tracking:
     def load_pedestrian_layer(self, layer_path: str, layer_name: str):
         """Load pedestrian layer"""
 
+        print("Loading pedestrian graph...")
+
         project = QgsProject.instance()
         layer = QgsVectorLayer(layer_path + "|layername=edges", layer_name, "ogr")
-        print(type(layer))
         if not layer.isValid():
             print("Layer failed to load!")
         else:
             # Add layer to the registry
+            print("Pedestrian graph loaded!")
             project.addMapLayer(layer)
 
     def get_nearby_stops(self, layer_name: str, x_coord: float, y_coord: float, distance: int):
         """Get nearby stops"""
+
+        print("Getting nearby stops...")
 
         # obtain layer and crs
         project = QgsProject.instance()
@@ -678,6 +737,9 @@ class route_tracking:
 
         # return the selected stops
         selected_stops = [feature for feature in selected_stops_layer.getFeatures()]
+
+        print("Nearby stops obtained!")
+
         return selected_stops
 
     def get_stops_info(self, selected_stops: list):
@@ -717,36 +779,34 @@ class route_tracking:
         # return the stops info
         return stops_info
 
-    def get_subgraph(self):
+    def get_subgraphs(self, G: nx.MultiDiGraph):
         """Get subgraph of a graph"""
-        database = Database()
-        shapes = database.select_all_coordinates_shapes()
 
-        graph = self.create_graph_for_routes(shapes)
+        print("Extracting subgraphs...")
 
-        connected_components = list(nx.weakly_connected_components(graph))
+        connected_components = list(nx.weakly_connected_components(G))
         print("Number of subgraphs: ", len(connected_components))
 
         project = QgsProject.instance()
 
         # create a layer for each subgraph
         for i, component in enumerate(connected_components):
-            subgraph = graph.subgraph(component)
+            subG = G.subgraph(component)
             name = "subgraph_" + str(i)
             layer = QgsVectorLayer("LineString?crs=epsg:4326", name, "memory")
             layer.dataProvider().addAttributes([QgsField("Component", QVariant.Int)])
             layer.updateFields()
 
             # add the subgraph to the layer
-            for edge in subgraph.edges:
+            for edge in subG.edges:
 
                 # get the nodes
-                node1 = subgraph.nodes[edge[0]]
-                node2 = subgraph.nodes[edge[1]]
+                node1 = subG.nodes[edge[0]]
+                node2 = subG.nodes[edge[1]]
 
                 # create the points
-                point1 = QgsPointXY(node1["lon"], node1["lat"])
-                point2 = QgsPointXY(node2["lon"], node2["lat"])
+                point1 = QgsPointXY(node1['x'], node1['y'])
+                point2 = QgsPointXY(node2['x'], node2['y'])
 
                 # create the feature
                 feature = QgsFeature()
@@ -755,15 +815,35 @@ class route_tracking:
                 layer.dataProvider().addFeatures([feature])
 
             # change style of the layer
-            self.change_style_layer(layer, None, 'yellow', None, '1')
+            self.change_style_layer(layer, None, 'yellow', None, '0.5')
 
         
             # load layer
             project.addMapLayer(layer)
             print("Subgraph ", i, " loaded")
 
+        print("Subgraphs extracted!")
 
+    # def calculate_all_paths(self, origin: tuple, destination: tuple):
+    #     """Calculate all the paths between two nodes"""
 
+    #     print("Calculating all paths...")
+
+    #     # get the graph
+    #     G = self.load_graph()
+
+    #     # get nearest nodes
+    #     origin = ox.nearest_nodes(G, origin[0], origin[1])
+    #     destination = ox.nearest_nodes(G, destination[0], destination[1])
+
+    #     # calculate all the paths
+    #     all_paths = list(nx.all_simple_paths(G, origin, destination))
+
+    #     # print the number of paths
+    #     print("Number of paths: ", len(all_paths))
+
+    #     # return all the paths
+    #     return all_paths
 
 
     def run(self):
@@ -788,15 +868,29 @@ class route_tracking:
         if not os.path.exists(self._path + "/shapefiles/shape_points.shp" or self._path + "/shapefiles/shape_lines.shp"):
             self.create_route_shapes_layer()
 
-        if not os.path.exists(self._path + "/shapefiles/pedestrian_graph.gpkg"):
+        if not os.path.exists(self._path + "/graphs/pedestrian_graph.gpkg"):
             self.create_pedestrian_layer()
 
-        selected_stops = self.get_nearby_stops("stops", 9.1940190, 45.4571958, 500)
-        stops_info = self.get_stops_info(selected_stops)
-        # print("Stops info: ")
-        # print(stops_info)
+        if not os.path.exists(self._path + "/graphs/routes_graph.gpkg"):
+            self.create_graph_for_routes()
 
-        self.get_subgraph()
+        self.load_routes_layer(self._path + "/graphs/routes_graph.gpkg", "route_graph")
+
+        # orig = (9.3008493, 45.3877852)
+        # dest = (9.29043305, 45.3951232)
+        # paths = self.calculate_all_paths(orig, dest)
+
+        # print("Paths: ", paths)
+
+        
+        # selected_stops = self.get_nearby_stops("stops", 9.1940190, 45.4571958, 500)
+        # stops_info = self.get_stops_info(selected_stops)
+        # print("Stops info: ")
+        # pp.pprint(stops_info)
+
+        # graph_shapes = self.create_graph_for_routes()
+
+        # self.get_subgraphs(graph_shapes)
 
         # See if OK was pressed
         print("DAJE ROMA DAJE")
