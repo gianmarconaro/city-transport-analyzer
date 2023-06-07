@@ -35,11 +35,13 @@ import os.path
 from .gtfs_db import Database
 
 from collections import defaultdict
+from itertools import islice
 import networkx as nx
 import osmnx as ox
 import matplotlib.pyplot as plt
 import pprint as pp
 import geopandas as gpd
+import momepy as mm
 
 class route_tracking:
     """QGIS Plugin Implementation."""
@@ -213,7 +215,9 @@ class route_tracking:
         if not shapes:
             return "Error: routes is empty"
         
-        graph_path = self._path + "/graphs/routes_graph.gpkg"
+        layer_name = "routes_graph"
+        graph_path_gml = self._path + "/graphs/routes_graph.graphml"
+        graph_path_gpkg = self._path + "/graphs/routes_graph.gpkg"
 
         shape_id = ""
         is_first_value = True
@@ -260,14 +264,22 @@ class route_tracking:
 
         G = self.modify_graph(G)
 
-        # import and save it as a GeoPackage file
-        print("Saving graph as GeoPackage file...")
+        # import and save it as a GeoPackage and as GraphML file
+        print("Saving graph as GRAPHML and GeoPackage file...")
 
-        ox.save_graph_geopackage(G, filepath=graph_path)
+        ox.save_graphml(G, filepath=graph_path_gml)
+        ox.save_graph_geopackage(G, filepath=graph_path_gpkg)
 
         print("Graph saved!")
 
-        self.get_subgraphs(G)
+        # load graph as layer
+        self.load_routes_layer(graph_path_gpkg, "routes_graph")
+
+        # change style of the layer
+        project = QgsProject.instance()
+        layer = project.mapLayersByName(layer_name)[0]
+        self.change_style_layer(layer, 'circle', 'blue', '0.5', None)
+        self.change_style_layer(layer, None, 'blue', None, '0.5')
 
     def load_routes_layer(self, layer_path: str, layer_name: str):
         """Load pedestrian layer"""
@@ -311,25 +323,6 @@ class route_tracking:
 
         return G
     
-    # def merge_graph_nodes_with_same_coordinates(self, G: nx.DiGraph, nodes: list, coord: tuple):
-    #     """Merges the selected `nodes` in the graph `G` into one `new_node`, considering edge directions."""
-
-    #     # id of the new node is the concatenation of the ids of the merged nodes
-    #     node_id = '-'.join(nodes)
-
-    #     # add the new node to the graph
-    #     G.add_node(node_id, x=coord[0], y=coord[1], isStop=False)
-
-    #     # add edges to the new node
-    #     for node in nodes:
-    #         for pred in G.predecessors(node):
-    #             euclidean_distance = ox.distance.euclidean_dist_vec(G.nodes[pred]['x'], G.nodes[pred]['y'], G.nodes[node]['x'], G.nodes[node]['y'])
-    #             G.add_edge(pred, node_id, weight=euclidean_distance, transport=G.edges[pred, node]['transport'])
-    #         for succ in G.successors(node):
-    #             euclidean_distance = ox.distance.euclidean_dist_vec(G.nodes[node]['x'], G.nodes[node]['y'], G.nodes[succ]['x'], G.nodes[succ]['y'])
-    #             G.add_edge(node_id, succ, weight=euclidean_distance, transport=G.edges[node, succ]['transport'])
-    #         G.remove_node(node)
-
     def merge_graph_nodes_with_same_coordinates(self, G: nx.MultiDiGraph, nodes: list, coord: tuple):
         """Merge the selected `nodes` in the graph `G` into one `new_node`, considering edge directions."""
 
@@ -645,6 +638,11 @@ class route_tracking:
         # load layer
         self.load_pedestrian_layer(layer_path, layer_name)
 
+        # change style of the layer
+        project = QgsProject.instance()
+        layer = project.mapLayersByName(layer_name)[0]
+        self.change_style_layer(layer, None, 'red', None, '0.5')
+
     def load_pedestrian_layer(self, layer_path: str, layer_name: str):
         """Load pedestrian layer"""
 
@@ -824,13 +822,10 @@ class route_tracking:
 
         print("Subgraphs extracted!")
 
-    # def calculate_all_paths(self, origin: tuple, destination: tuple):
+    # def calculate_all_paths(self, G: nx.MultiDiGraph, origin: tuple, destination: tuple):
     #     """Calculate all the paths between two nodes"""
 
     #     print("Calculating all paths...")
-
-    #     # get the graph
-    #     G = self.load_graph()
 
     #     # get nearest nodes
     #     origin = ox.nearest_nodes(G, origin[0], origin[1])
@@ -844,6 +839,27 @@ class route_tracking:
 
     #     # return all the paths
     #     return all_paths
+
+    def calculate_n_shortest_paths(self, G: nx.MultiDiGraph, origin: tuple, destination: tuple, n: int):
+        """Calculate n shortest paths between two nodes"""
+
+        print("Calculating n shortest paths...")
+
+        # get nearest nodes
+        origin = ox.nearest_nodes(G, origin[0], origin[1])
+        destination = ox.nearest_nodes(G, destination[0], destination[1])
+
+        # calculate n shortest paths
+        n_shortest_paths = list(islice(ox.k_shortest_paths(G, origin, destination, k=n, weight='weight'), n))
+
+        # calculate n shortest paths
+        # n_shortest_paths = list(islice(nx.all_shortest_paths(G, origin, destination, weight='weight'), n))
+
+        # print the number of paths
+        print("Number of paths: ", len(n_shortest_paths))
+
+        # return n shortest paths
+        return n_shortest_paths
 
 
     def run(self):
@@ -873,25 +889,27 @@ class route_tracking:
 
         if not os.path.exists(self._path + "/graphs/routes_graph.gpkg"):
             self.create_graph_for_routes()
-
-        self.load_routes_layer(self._path + "/graphs/routes_graph.gpkg", "route_graph")
-
-        # orig = (9.3008493, 45.3877852)
-        # dest = (9.29043305, 45.3951232)
-        # paths = self.calculate_all_paths(orig, dest)
-
-        # print("Paths: ", paths)
-
         
         # selected_stops = self.get_nearby_stops("stops", 9.1940190, 45.4571958, 500)
         # stops_info = self.get_stops_info(selected_stops)
         # print("Stops info: ")
         # pp.pprint(stops_info)
 
-        # graph_shapes = self.create_graph_for_routes()
+        # load the graph
+        G = ox.load_graphml(self._path + "/graphs/routes_graph.graphml",
+                            node_dtypes={'fid': int, 'osmid': str, 'x': float, 'y': float, 'is_stop': bool},
+                            edge_dtypes={'fid': int, 'u': str, 'v': str, 'key': int, 'weight': float, 'transport': str, 'from': str, 'to': str})
 
-        # self.get_subgraphs(graph_shapes)
+        print("GraphML loaded!")
 
+        self.get_subgraphs(G)
+
+        orig = (9.3008493, 45.3877852)
+        dest = (9.29043305, 45.3951232)
+
+        paths = self.calculate_n_shortest_paths(G, orig, dest, 10)
+        pp.pprint(paths)
+        
         # See if OK was pressed
         print("DAJE ROMA DAJE")
 
