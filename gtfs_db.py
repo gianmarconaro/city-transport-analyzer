@@ -6,15 +6,14 @@ import os
 
 class Database:
     def __init__(self):
-        self._FILE_DB = "GTFS_DB/gtfs_milan.db"   
+        self._FILE_DB = "GTFS_DB/gtfs_milan_metro.db"   
         self._path = os.path.dirname(os.path.abspath(__file__)) + "/" + self._FILE_DB
         # check if the database exists
         if not os.path.isfile(self._path):
             raise Exception("Database not found")
         else:
             print("Database found")
-            
-        
+                    
     def create_connection(self):
         """ 
         create a database connection to the SQLite database specified by the db_file

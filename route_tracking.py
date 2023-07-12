@@ -24,7 +24,7 @@
 from qgis.PyQt.QtCore import Qt, QSettings, QTranslator, QCoreApplication, QVariant, QTimer
 from qgis.PyQt.QtGui import QIcon, QCursor, QColor
 from qgis.PyQt.QtWidgets import QAction
-from qgis.core import QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry, QgsPointXY, QgsWkbTypes, QgsFields, QgsField, QgsVectorFileWriter, QgsMarkerSymbol, QgsLineSymbol, QgsSingleSymbolRenderer, QgsFillSymbol, QgsDistanceArea, QgsUnitTypes
+from qgis.core import QgsProject, QgsVectorLayer, QgsFeature, QgsFeatureRequest, QgsGeometry, QgsPointXY, QgsCircularString ,QgsWkbTypes, QgsFields, QgsField, QgsVectorFileWriter, QgsMarkerSymbol, QgsLineSymbol, QgsSingleSymbolRenderer, QgsFillSymbol, QgsDistanceArea, QgsUnitTypes, QgsSpatialIndex
 from qgis.gui import QgsMapToolEmitPoint, QgsMapMouseEvent
 from qgis.utils import iface
 
@@ -38,10 +38,8 @@ from collections import defaultdict
 from itertools import islice
 import networkx as nx
 import osmnx as ox
-import matplotlib.pyplot as plt
 import pprint as pp
 import geopandas as gpd
-import momepy as mm
 
 class route_tracking:
     """QGIS Plugin Implementation."""
@@ -250,7 +248,7 @@ class route_tracking:
                 G.add_node(shape[0] + "_" + str(shape[3]), x=shape[2], y=shape[1], is_stop=False)
 
                 # calculate euclidean distance between previous shape and current shape
-                euclidean_distance = ox.distance.euclidean_dist_vec(prev_shape[2], prev_shape[1], shape[2], shape[1])
+                euclidean_distance = ox.distance.great_circle_vec(prev_shape[2], prev_shape[1], shape[2], shape[1])
 
                 # add edge to graph with euclidean distance as weight
                 starting_node = prev_shape[0] + "_" + str(prev_shape[3])
@@ -267,7 +265,8 @@ class route_tracking:
         # import and save it as a GeoPackage and as GraphML file
         print("Saving graph as GRAPHML and GeoPackage file...")
 
-        ox.save_graphml(G, filepath=graph_path_gml)
+        # ox.save_graphml(G, filepath=graph_path_gml)
+        nx.write_graphml(G, graph_path_gml)
         ox.save_graph_geopackage(G, filepath=graph_path_gpkg)
 
         print("Graph saved!")
@@ -315,9 +314,9 @@ class route_tracking:
         print("Nodes merged!")
         
         # Merge stops with the graph
-        # print("Merging stops with the graph...")
-        # self.merge_stops_with_graph(G)
-        # print("Stops merged!")
+        print("Merging stops with the graph...")
+        self.merge_stops_with_graph(G)
+        print("Stops merged!")
 
         print("Graph modified!")
 
@@ -624,19 +623,24 @@ class route_tracking:
 
         # import from osmnx the graph of the city with pedestrian network
         place_name = "Milano, Lombardia, Italia"
+        # place_name = "Madrid, Spain"
+        # place_name = "Los Angeles, California, USA"
+        # place_name = "Turin, Piedmont, Italy"
         pedestrian_graph = ox.graph_from_place(place_name, network_type="walk")
 
         # define name and path
         layer_name = "pedestrian_graph"
-        layer_path = self._path + "/graphs/pedestrian_graph.gpkg"
+        graph_path_gpkg = self._path + "/graphs/pedestrian_graph.gpkg"
+        graph_path_gml = self._path + "/graphs/pedestrian_graph.graphml"
 
         # import and save it as a layer
-        ox.save_graph_geopackage(pedestrian_graph, filepath=layer_path, directed=False)
+        ox.save_graph_geopackage(pedestrian_graph, filepath=graph_path_gpkg, directed=False)
+        ox.save_graphml(pedestrian_graph, filepath=graph_path_gml)
 
         print("Pedestrian graph created!")
 
         # load layer
-        self.load_pedestrian_layer(layer_path, layer_name)
+        self.load_pedestrian_layer(graph_path_gpkg, layer_name)
 
         # change style of the layer
         project = QgsProject.instance()
@@ -790,7 +794,7 @@ class route_tracking:
         # create a layer for each subgraph
         for i, component in enumerate(connected_components):
             subG = G.subgraph(component)
-            name = "subgraph_" + str(i)
+            name = "subgraph_" + str(i + 1)
             layer = QgsVectorLayer("LineString?crs=epsg:4326", name, "memory")
             layer.dataProvider().addAttributes([QgsField("Component", QVariant.Int)])
             layer.updateFields()
@@ -818,7 +822,7 @@ class route_tracking:
         
             # load layer
             project.addMapLayer(layer)
-            print("Subgraph ", i, " loaded")
+            print("Subgraph ", i + 1, " loaded")
 
         print("Subgraphs extracted!")
 
@@ -861,6 +865,54 @@ class route_tracking:
         # return n shortest paths
         return n_shortest_paths
 
+    def merge_subgraphs(self, G: nx.MultiDiGraph, G_walk: nx.MultiDiGraph, radius: int):
+        """Merge subgraphs"""
+
+        print("Merging subgraphs...")
+
+        # load graph nodes layer
+        graph_path = self._path + "/graphs/routes_graph.gpkg"
+        layer_nodes = QgsVectorLayer(graph_path + "|layername=nodes", "routes_graph", "ogr")
+
+        # create a spatial index
+        spatial_index = QgsSpatialIndex(layer_nodes.getFeatures())
+
+        # identify the subgraphs
+        subgraphs = nx.weakly_connected_components(G)
+
+        for i, subgraph in enumerate(subgraphs):
+            subgraph_nodes = G.subgraph(subgraph).copy()
+            list_subgraph_nodes = []
+
+            for node, data in subgraph_nodes.nodes(data=True):
+                if data.get("is_stop") == True:
+                    # save only the ID of the node
+                    list_subgraph_nodes.append(node)
+
+            # ID of the point of departure
+            starting_node_id = list_subgraph_nodes[0]
+
+            # Obtain the geometry of the starting point
+            expression = '"osmid" = \'' + str(starting_node_id) + '\''
+            request = QgsFeatureRequest().setFilterExpression(expression)
+            features = layer_nodes.getFeatures(request)
+            starting_node = next(features, None)
+            starting_node_geometry = starting_node.geometry()
+
+            # # Aggiungi gli altri punti entro il raggio che non sono già connessi al punto di partenza
+            for node_id in nodes_into_range:
+                if node_id != starting_node_id:
+                    # Controlla se il punto è già connesso al punto di partenza
+                    if not G.has_edge(starting_node_id, node_id):
+                        print("Adding edge")
+                        # Aggiungi il punto al grafo
+                        # Aggiungi l'arco bidirezionale tra il punto di partenza e il punto corrente
+                        G.add_edge(starting_node_id, node_id)
+
+        print("Subgraphs merged!")
+
+
+                        
 
     def run(self):
         """Run method that performs all the real work"""
@@ -886,29 +938,41 @@ class route_tracking:
 
         if not os.path.exists(self._path + "/graphs/pedestrian_graph.gpkg"):
             self.create_pedestrian_layer()
+        
+        if not QgsProject.instance().mapLayersByName("pedestrian_graph")[0]:      
+            self.load_pedestrian_layer(self._path + "/graphs/pedestrian_graph.gpkg", "pedestrian_graph")
+
+            print("GraphML loaded!")
 
         if not os.path.exists(self._path + "/graphs/routes_graph.gpkg"):
             self.create_graph_for_routes()
+        if not QgsProject.instance().mapLayersByName("routes_graph")[1:]:
+            G = nx.read_graphml(self._path + "/graphs/routes_graph.graphml")
+
+            G_walk = ox.load_graphml(self._path + "/graphs/pedestrian_graph.graphml",
+                            node_dtypes={'fid': int, 'osmid': str, 'x': float, 'y': float},
+                            edge_dtypes={'fid': int, 'u': str, 'v': str, 'key': int, 'weight': float, 'transport': str, 'from': str, 'to': str})
+            
+            self.load_routes_layer(self._path + "/graphs/routes_graph.gpkg", "routes_graph")
+
+            print("GraphML loaded!")
+
+            self.get_subgraphs(G)
+
+            self.merge_subgraphs(G, G_walk, 200/111320)
+
+            self.load_routes_layer(self._path + "/graphs/routes_graph.gpkg", "routes_graph")
         
-        # selected_stops = self.get_nearby_stops("stops", 9.1940190, 45.4571958, 500)
+        # selected_stops = self.get_nearby_stops("stops", 9.1940190, 45.4571958, 100)
         # stops_info = self.get_stops_info(selected_stops)
         # print("Stops info: ")
         # pp.pprint(stops_info)
 
-        # load the graph
-        G = ox.load_graphml(self._path + "/graphs/routes_graph.graphml",
-                            node_dtypes={'fid': int, 'osmid': str, 'x': float, 'y': float, 'is_stop': bool},
-                            edge_dtypes={'fid': int, 'u': str, 'v': str, 'key': int, 'weight': float, 'transport': str, 'from': str, 'to': str})
+        # orig = (9.3008493, 45.3877852)
+        # dest = (9.29043305, 45.3951232)
 
-        print("GraphML loaded!")
-
-        self.get_subgraphs(G)
-
-        orig = (9.3008493, 45.3877852)
-        dest = (9.29043305, 45.3951232)
-
-        paths = self.calculate_n_shortest_paths(G, orig, dest, 10)
-        pp.pprint(paths)
+        # paths = self.calculate_n_shortest_paths(G, orig, dest, 10)
+        # pp.pprint(paths)
         
         # See if OK was pressed
         print("DAJE ROMA DAJE")
