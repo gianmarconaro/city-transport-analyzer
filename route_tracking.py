@@ -24,7 +24,7 @@
 from qgis.PyQt.QtCore import Qt, QSettings, QTranslator, QCoreApplication, QVariant, QTimer
 from qgis.PyQt.QtGui import QIcon, QCursor, QColor
 from qgis.PyQt.QtWidgets import QAction
-from qgis.core import QgsProject, QgsVectorLayer, QgsFeature, QgsFeatureRequest, QgsGeometry, QgsPointXY, QgsCircularString ,QgsWkbTypes, QgsFields, QgsField, QgsVectorFileWriter, QgsMarkerSymbol, QgsLineSymbol, QgsSingleSymbolRenderer, QgsFillSymbol, QgsDistanceArea, QgsUnitTypes, QgsSpatialIndex
+from qgis.core import QgsProject, QgsVectorLayer, QgsFeature, QgsRectangle, QgsGeometry, QgsPointXY, QgsCircularString ,QgsWkbTypes, QgsFields, QgsField, QgsVectorFileWriter, QgsMarkerSymbol, QgsLineSymbol, QgsSingleSymbolRenderer, QgsFillSymbol, QgsDistanceArea, QgsUnitTypes, QgsSpatialIndex
 from qgis.gui import QgsMapToolEmitPoint, QgsMapMouseEvent
 from qgis.utils import iface
 
@@ -40,6 +40,7 @@ import networkx as nx
 import osmnx as ox
 import pprint as pp
 import geopandas as gpd
+import datetime
 
 class route_tracking:
     """QGIS Plugin Implementation."""
@@ -267,7 +268,7 @@ class route_tracking:
 
         # ox.save_graphml(G, filepath=graph_path_gml)
         nx.write_graphml(G, graph_path_gml)
-        ox.save_graph_geopackage(G, filepath=graph_path_gpkg)
+        ox.save_graph_geopackage(G, filepath=graph_path_gpkg, directed=True)
 
         print("Graph saved!")
 
@@ -276,12 +277,13 @@ class route_tracking:
 
         # change style of the layer
         project = QgsProject.instance()
-        layer = project.mapLayersByName(layer_name)[0]
-        self.change_style_layer(layer, 'circle', 'blue', '0.5', None)
-        self.change_style_layer(layer, None, 'blue', None, '0.5')
+        layer_point = project.mapLayersByName(layer_name)[0]
+        layer_line = project.mapLayersByName(layer_name)[1]
+        self.change_style_layer(layer_point, 'circle', 'blue', '0.5', None)
+        self.change_style_layer(layer_line, None, 'blue', None, '0.5')
 
     def load_routes_layer(self, layer_path: str, layer_name: str):
-        """Load pedestrian layer"""
+        """Load routes layer"""
 
         print("Loading route graph...")
 
@@ -317,6 +319,20 @@ class route_tracking:
         print("Merging stops with the graph...")
         self.merge_stops_with_graph(G)
         print("Stops merged!")
+
+        # Get subgraphs
+        print("Getting subgraphs...")
+        self.get_subgraphs(G)
+        print("Subgraphs got!")
+
+        # Merge subgraphs
+        print("Merge subgraphs...")
+        G_walk = ox.load_graphml(self._path + "/graphs/pedestrian_graph.graphml",
+                            node_dtypes={'fid': int, 'osmid': str, 'x': float, 'y': float},
+                            edge_dtypes={'fid': int, 'u': str, 'v': str, 'key': int, 'weight': float, 'transport': str, 'from': str, 'to': str})
+        
+        self.merge_subgraphs(G, G_walk, 400/111320)
+        print("Subgraphs merged!")
 
         print("Graph modified!")
 
@@ -826,24 +842,6 @@ class route_tracking:
 
         print("Subgraphs extracted!")
 
-    # def calculate_all_paths(self, G: nx.MultiDiGraph, origin: tuple, destination: tuple):
-    #     """Calculate all the paths between two nodes"""
-
-    #     print("Calculating all paths...")
-
-    #     # get nearest nodes
-    #     origin = ox.nearest_nodes(G, origin[0], origin[1])
-    #     destination = ox.nearest_nodes(G, destination[0], destination[1])
-
-    #     # calculate all the paths
-    #     all_paths = list(nx.all_simple_paths(G, origin, destination))
-
-    #     # print the number of paths
-    #     print("Number of paths: ", len(all_paths))
-
-    #     # return all the paths
-    #     return all_paths
-
     def calculate_n_shortest_paths(self, G: nx.MultiDiGraph, origin: tuple, destination: tuple, n: int):
         """Calculate n shortest paths between two nodes"""
 
@@ -865,49 +863,218 @@ class route_tracking:
         # return n shortest paths
         return n_shortest_paths
 
+    def convert_nodes_into_points(self, G: nx.MultiDiGraph):
+        """Convert nodes into points"""
+
+        print("Converting nodes into points...")
+
+        # create a default dictionary to store the nodes with the attribute id
+        point_to_id_stop = defaultdict(dict)
+
+        # create a list of points
+        stop_points = []
+
+        # create a list of points and fill a dictionary with the nodes with the attribute id
+        for node in G.nodes:
+            x = G.nodes[node]['x']
+            y = G.nodes[node]['y']
+            is_stop = G.nodes[node]['is_stop']
+
+            if is_stop == True:
+                point = QgsPointXY(x, y)
+                point_to_id_stop[point] = node
+                stop_points.append(point)
+
+        print("Nodes converted into points!")
+        # print the list
+        # print("Points: ", points)
+
+        # return the list of points
+        return stop_points, point_to_id_stop
+    
+    def convert_walk_nodes_into_points(self, G: nx.MultiDiGraph):
+        # convert nodes of the graph into points
+
+        print("Converting walk nodes into points...")
+        # create a list of points
+        walk_points = []
+
+        # create a list of points and fill a dictionary with the nodes with the attribute id
+        point_to_id_walk = defaultdict(dict)
+
+        spatial_index_walk = QgsSpatialIndex()
+        feature_id_walk_to_point = defaultdict(dict)
+
+        for node, id in zip(G.nodes, range(len(G.nodes))):
+            x = G.nodes[node]['x']
+            y = G.nodes[node]['y']
+            point = QgsPointXY(x, y)
+            walk_points.append(point)
+            point_to_id_walk[point] = node
+
+            feature_walk = QgsFeature()
+            feature_walk.setGeometry(QgsGeometry.fromPointXY(point))
+            feature_walk.setId(id)
+            spatial_index_walk.addFeature(feature_walk)
+            feature_id_walk_to_point[feature_walk.id()] = point
+
+        print("Walk nodes converted into points!")
+
+        return walk_points, point_to_id_walk, spatial_index_walk, feature_id_walk_to_point
+
     def merge_subgraphs(self, G: nx.MultiDiGraph, G_walk: nx.MultiDiGraph, radius: int):
         """Merge subgraphs"""
 
         print("Merging subgraphs...")
 
-        # load graph nodes layer
-        graph_path = self._path + "/graphs/routes_graph.gpkg"
-        layer_nodes = QgsVectorLayer(graph_path + "|layername=nodes", "routes_graph", "ogr")
+        # dict to save the association between point and id of the feature
+        feature_id_stop_to_point = defaultdict(dict)
+        # point_to_feature_id_walk = defaultdict(dict)
 
-        # create a spatial index
-        spatial_index = QgsSpatialIndex(layer_nodes.getFeatures())
+        # convert nodes of the graph into points
+        stop_points, point_to_id_stop = self.convert_nodes_into_points(G)
+        walk_points, point_to_id_walk, spatial_index_walk, feature_id_walk_to_point = self.convert_walk_nodes_into_points(G_walk)
+        print("Number of points (stops): ", len(stop_points))
+        print("Number of points (walk): ", len(walk_points))
 
-        # identify the subgraphs
-        subgraphs = nx.weakly_connected_components(G)
+        start_time = datetime.datetime.now()
 
-        for i, subgraph in enumerate(subgraphs):
-            subgraph_nodes = G.subgraph(subgraph).copy()
-            list_subgraph_nodes = []
+        # create the spatial indexes
+        spatial_index_stops = QgsSpatialIndex()
+        # spatial_index_walk = QgsSpatialIndex()
 
-            for node, data in subgraph_nodes.nodes(data=True):
-                if data.get("is_stop") == True:
-                    # save only the ID of the node
-                    list_subgraph_nodes.append(node)
+        # print the first point and his type
+        # print("First point (walk): ", walk_points[0], " - ", type(walk_points[0]))
 
-            # ID of the point of departure
-            starting_node_id = list_subgraph_nodes[0]
+        # create the features for stops and walk nodes
+        for id, stop_point in enumerate(stop_points):
+            feature_stop = QgsFeature()
+            feature_stop.setGeometry(QgsGeometry.fromPointXY(stop_point))
+            feature_stop.setId(id)
+            spatial_index_stops.addFeature(feature_stop)
+            feature_id_stop_to_point[feature_stop.id()] = stop_point    
 
-            # Obtain the geometry of the starting point
-            expression = '"osmid" = \'' + str(starting_node_id) + '\''
-            request = QgsFeatureRequest().setFilterExpression(expression)
-            features = layer_nodes.getFeatures(request)
-            starting_node = next(features, None)
-            starting_node_geometry = starting_node.geometry()
+        # for id, walk_point in enumerate(walk_points):
+        #     feature_walk = QgsFeature()
+        #     feature_walk.setGeometry(QgsGeometry.fromPointXY(walk_point))
+        #     feature_walk.setId(id)
+        #     spatial_index_walk.addFeature(feature_walk)
+        #     point_to_feature_id_walk[walk_point] = feature_walk.id()
 
-            # # Aggiungi gli altri punti entro il raggio che non sono già connessi al punto di partenza
-            for node_id in nodes_into_range:
-                if node_id != starting_node_id:
-                    # Controlla se il punto è già connesso al punto di partenza
-                    if not G.has_edge(starting_node_id, node_id):
-                        print("Adding edge")
-                        # Aggiungi il punto al grafo
-                        # Aggiungi l'arco bidirezionale tra il punto di partenza e il punto corrente
-                        G.add_edge(starting_node_id, node_id)
+        # check that the spatial index is not empty using refs
+        if spatial_index_stops.refs() == 0:
+            print("Spatial index stops is empty!")
+        else:
+            print("Spatial index stops is not empty!")
+
+        for stop_point, i in zip(stop_points, range(len(stop_points))):
+            # define the area
+            x_min = stop_point.x() - radius
+            y_min = stop_point.y() - radius
+            x_max = stop_point.x() + radius
+            y_max = stop_point.y() + radius
+
+            # define the rectangle
+            rectangle_area = QgsRectangle(x_min, y_min, x_max, y_max)
+
+            # retrieve the intersected features with the rectangle
+            intersected_stop_features = spatial_index_stops.intersects(rectangle_area)
+
+            # if the list is not empty, retrieve the nearest neighbor of the current stop point
+            if len(intersected_stop_features) > 0:
+                current_walk_point_feature_id = spatial_index_walk.nearestNeighbor(stop_point, 1, 0)[0] # return a list of ID ordered by distance
+
+                # retrieve the point from the id_feature
+                current_walk_point = feature_id_walk_to_point[current_walk_point_feature_id]
+
+                # retrieve the id of the nearest walk point (id on graph)
+                current_walk_point_id = point_to_id_walk[current_walk_point]
+
+                # retrieve the id of the current stop point (id on graph)
+                current_stop_point_id = point_to_id_stop[stop_point]
+
+                for stop_feature_id in intersected_stop_features:
+                    # retrieve the point from the feature id
+                    intersected_stop_point = feature_id_stop_to_point[stop_feature_id]
+                    # intersected_stop_point_geometry = spatial_index_stops.geometry(stop_feature_id)
+
+                    # retrieve the id of the point (id on graph)
+                    intersected_stop_point_id = point_to_id_stop[intersected_stop_point]
+                    
+                    if intersected_stop_point != stop_point and not G.has_edge(current_stop_point_id, intersected_stop_point_id):
+                        nearest_walk_point_feature_id = spatial_index_walk.nearestNeighbor(intersected_stop_point, 1, 0)[0] # return a list of ID ordered by distance
+
+                        # retrieve the point from the id_feature
+                        nearest_walk_point = feature_id_walk_to_point[nearest_walk_point_feature_id]
+
+                        # retrieve the id of the point (id on graph)
+                        nearest_walk_point_id = point_to_id_walk[nearest_walk_point] # errore QUI
+
+                        # calculate the shortest path distance between the two points
+                        distance_meters = nx.shortest_path_length(G_walk, current_walk_point_id, nearest_walk_point_id)
+
+                        # add the new edge to the graph
+                        G.add_edge(current_stop_point_id, intersected_stop_point_id, distance=distance_meters, transport="walk")
+            else:
+                print("No points found!")
+
+            if i % 50 == 0:
+                partial_time = datetime.datetime.now()
+                print("Point: ", i)
+                print("Partial time: ", partial_time - start_time)
+
+
+
+            # indentify all the points in the area
+            # for other_node_id, other_point in id_to_point.items():
+            #     if other_point != point and area.contains(QgsGeometry.fromPointXY(other_point)):
+            #         if not nx.algorithms.shortest_paths.generic.has_path(G, current_id, other_node_id): # fix it, potrebbe creare un percorso lontanissimo ma valido
+            #             # basta farlo con shortest_path oppure aggiungere a priori senza controllare
+            #             current_id_walk = ox.nearest_nodes(G_walk, point.x(), point.y()) # fix it
+            #             other_node_id_walk = ox.nearest_nodes(G_walk, other_point.x(), other_point.y())
+            #             distance_degree = nx.shortest_path_length(G_walk, current_id_walk, other_node_id_walk, weight='weight')
+            #             distance_meters = distance_degree * (math.pi * 111320) / 360 # fix it, not correct
+            #             print("Distance: ", distance_meters)
+            #             G.add_edge(current_id, other_node_id, weight=distance_meters, transport='walk')
+
+            #             #check if the edge is added
+            #             if G.has_edge(current_id, other_node_id):
+            #                 print("Edge added")
+            #             else:
+            #                 print("Edge not added")
+
+            # nearest_point = spatial_index.nearestNeighbor(point_geometry.asPoint(), 1)[0]
+            # # ritorna il punto a me serve l'id
+            # nearest_id = point_to_id_walk[nearest_point]
+
+            # for other_node_id, other_point in id_to_point.items():
+            #     if other_point != point and area.contains(QgsGeometry.fromPointXY(other_point)):
+            #         # controllare che non venga restituito lo stesso nodo
+            #         # if not G.has_edge(current_id, other_node_id):
+
+            #         # Trovare il nearest node é troppo pesante computazionalmente 
+            #         # current_id_walk = ox.nearest_nodes(G_walk, point.x(), point.y())
+            #         # other_node_id_walk = ox.nearest_nodes(G_walk, other_point.x(), other_point.y())
+            #         # distance = nx.shortest_path_length(G_walk, current_id_walk, other_node_id_walk, weight='length')
+
+            #         nearest_other_point = spatial_index.nearestNeighbor(point_geometry.asPoint(), 1)[0]
+            #         # ritorna il punto a me serve l'id
+            #         nearest_other_id = point_to_id_walk[nearest_other_point]
+
+            #         distance = nx.shortest_path_length(G_walk, nearest_id, nearest_other_id, weight='length')
+
+            #         # -----------------------------------
+
+            #         # distance = point.distance(other_point)
+
+            #         G.add_edge(current_id, other_node_id, weight=distance, transport='walk')
+
+            #         #check if the edge is added
+            #         # if G.has_edge(current_id, other_node_id):
+            #         #     print("Edge added")
+            #         # else:
+            #         #     print("Edge not added")
+
 
         print("Subgraphs merged!")
 
@@ -927,6 +1094,9 @@ class route_tracking:
         self.dlg.show()
         # Run the dialog event loop
         result = self.dlg.exec_()
+    	
+        start_time = datetime.datetime.now()
+        print("Starting time: ", start_time)
 
         # Create stops layer only if not present in shapefiles folder
         if not os.path.exists(self._path + "/shapefiles/stops.shp") :
@@ -948,18 +1118,16 @@ class route_tracking:
             self.create_graph_for_routes()
         if not QgsProject.instance().mapLayersByName("routes_graph")[1:]:
             G = nx.read_graphml(self._path + "/graphs/routes_graph.graphml")
+            
+            print("GraphML loaded!")
 
             G_walk = ox.load_graphml(self._path + "/graphs/pedestrian_graph.graphml",
                             node_dtypes={'fid': int, 'osmid': str, 'x': float, 'y': float},
                             edge_dtypes={'fid': int, 'u': str, 'v': str, 'key': int, 'weight': float, 'transport': str, 'from': str, 'to': str})
-            
-            self.load_routes_layer(self._path + "/graphs/routes_graph.gpkg", "routes_graph")
-
-            print("GraphML loaded!")
+        
+            self.merge_subgraphs(G, G_walk, 200/111320)
 
             self.get_subgraphs(G)
-
-            self.merge_subgraphs(G, G_walk, 200/111320)
 
             self.load_routes_layer(self._path + "/graphs/routes_graph.gpkg", "routes_graph")
         
@@ -973,9 +1141,14 @@ class route_tracking:
 
         # paths = self.calculate_n_shortest_paths(G, orig, dest, 10)
         # pp.pprint(paths)
+
+        # print current time
+        end_time = datetime.datetime.now()
+        print("Ending time: ", end_time)
+        print("Total time: ", end_time - start_time)
         
         # See if OK was pressed
-        print("DAJE ROMA DAJE")
+        print("SIUM")
 
 
         if result:
