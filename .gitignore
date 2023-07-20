@@ -1,5 +1,6 @@
 GTFS_DB/
 graphs/
+polygons/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

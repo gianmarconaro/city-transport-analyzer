@@ -21,9 +21,19 @@ class StopsLayer:
     def create_stops_layer(self):
         """Create a layer with stops"""
 
+        STOPS_LAYER_PATH = self._path + "/shapefiles/stops.shp"
+        STOPS_LAYER_NAME = "stops"
+
+        project = QgsProject.instance()
+        crs = project.crs()
+
         # Create stops layer only if not present in shapefiles folder
-        if os.path.exists(self._path + "/shapefiles/stops.shp"):
-            return
+        if os.path.exists(STOPS_LAYER_PATH):
+            if project.mapLayersByName(STOPS_LAYER_NAME):
+                return
+            else:
+                self.load_stops_layer(STOPS_LAYER_PATH, STOPS_LAYER_NAME)
+                return
 
         print("Creating stops layer...")
 
@@ -37,16 +47,11 @@ class StopsLayer:
         fields.append(QgsField("Lon", QVariant.Double))
         fields.append(QgsField("Lan", QVariant.Double))
         fields.append(QgsField("Wheelchair_boarding", QVariant.Int))
-
-        # define name and path
-        layer_name = "stops"
-        layer_path = self._path + "/shapefiles/stops.shp"
-        project = QgsProject.instance()
-        crs = project.crs()
+        # fields.append(QgsField("Transports", QVariant.String)) the cost is too high
 
         # define writer
         writer = QgsVectorFileWriter(
-            layer_path, "UTF-8", fields, QgsWkbTypes.Point, crs, "ESRI Shapefile"
+            STOPS_LAYER_PATH, "UTF-8", fields, QgsWkbTypes.Point, crs, "ESRI Shapefile"
         )
 
         if writer.hasError() != QgsVectorFileWriter.NoError:
@@ -59,6 +64,11 @@ class StopsLayer:
             lon = stop[3]
             lat = stop[2]
             wheelchair_boarding = stop[4]
+
+            # select transports passing by the stop
+            # transports = database.select_transports_by_stop_id(stop_id)
+            # transports_list = [transport[0] for transport in transports]
+            # transports_string = ", ".join(transports_list)
 
             # add a feature with geometry
             fet = QgsFeature()
@@ -80,13 +90,7 @@ class StopsLayer:
         del writer
 
         # load layer
-        self.load_stops_layer(layer_path, layer_name)
-
-        # retrieve layer
-        layer = project.mapLayersByName(layer_name)[0]
-
-        # set layer style
-        change_style_layer(layer, "square", "green", "2", None)
+        self.load_stops_layer(STOPS_LAYER_PATH, STOPS_LAYER_NAME)
 
         print("Stops layer created!")
 
@@ -100,3 +104,6 @@ class StopsLayer:
         else:
             # Add layer to the registry
             project.addMapLayer(layer)
+        
+        # change style of the layer
+        change_style_layer(layer, "square", "green", "2", None)

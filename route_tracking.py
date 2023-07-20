@@ -36,6 +36,7 @@ from .gtfs_db import Database
 from .stops_layer import StopsLayer
 from .pedestrian_graph import PedestrianGraph
 from .route_graph import RouteGraph
+from .analysis import Analysis
 from .utils import change_style_layer
 
 from collections import defaultdict
@@ -46,7 +47,7 @@ import pprint as pp
 import geopandas as gpd
 import datetime
 
-class route_tracking(StopsLayer, PedestrianGraph, RouteGraph):
+class route_tracking(StopsLayer, PedestrianGraph, RouteGraph, Analysis):
     """QGIS Plugin Implementation."""
 
     # set the right path for cache folder
@@ -197,90 +198,6 @@ class route_tracking(StopsLayer, PedestrianGraph, RouteGraph):
                 action)
             self.iface.removeToolBarIcon(action)
 
-
-    def get_nearby_stops(self, layer_name: str, x_coord: float, y_coord: float, distance: int):
-        """Get nearby stops"""
-
-        print("Getting nearby stops...")
-
-        # obtain layer and crs
-        project = QgsProject.instance()
-        stops_layer = project.mapLayersByName(layer_name)[0]
-        crs = stops_layer.crs()
-
-        # create distance area
-        distance_area = QgsDistanceArea()
-        distance_area.setSourceCrs(stops_layer.crs(), project.transformContext())
-        distance_area.setEllipsoid(project.ellipsoid())
-
-        # convert distance from meters to degrees
-        distance_degrees = distance_area.convertLengthMeasurement(distance, QgsUnitTypes.DistanceUnit.Degrees)
-
-        # create starting point
-        starting_point = QgsPointXY(x_coord, y_coord)
-        geometry = QgsGeometry.fromPointXY(starting_point)
-
-        # create a circular buffer
-        circular_buffer = geometry.buffer(distance_degrees, segments=32)
-
-        # create new feature to store the circular buffer
-        circular_feature = QgsFeature()
-        circular_feature.setGeometry(circular_buffer)
-
-        # add the circular buffer to the layer
-        circular_buffer_layer = QgsVectorLayer("Polygon?crs=" + crs.authid(), "circular_buffer", "memory")
-        circular_buffer_layer.dataProvider().addFeatures([circular_feature])
-
-        # change style of the layer
-        fill_symbol = QgsFillSymbol.createSimple({'color': 'cyan', 'outline_color': 'black', 'outline_width': '0.5', 'style': 'solid'})
-        fill_symbol.setColor(QColor(0, 255, 255, 80))
-        circular_buffer_layer.renderer().setSymbol(fill_symbol)
-
-        # create a temporary new layer to store all the selected stops
-        selected_stops_layer = QgsVectorLayer("Point?crs=" + crs.authid(), "selected_stops", "memory")
-
-        # add fields to the layer
-        fields = QgsFields()
-        fields.append(QgsField("ID", QVariant.String))
-        fields.append(QgsField("Stop_name", QVariant.String))
-
-        # add fields to the layer
-        selected_stops_layer.dataProvider().addAttributes(fields)
-
-        # start editing the layer
-        selected_stops_layer.startEditing()
-
-        # iterate over the features of the original layer
-        for feature in stops_layer.getFeatures():
-            stop_point = feature.geometry()
-            
-            # check if the stop is inside the circular buffer
-            if circular_buffer.contains(stop_point):
-                # create a new feature
-                new_feature = QgsFeature(selected_stops_layer.fields())
-                new_feature.setGeometry(stop_point)
-                new_feature.setAttributes([feature["ID"], feature["Stop_name"]])
-
-                # add the feature to the layer
-                selected_stops_layer.addFeature(new_feature)
-        
-        # commit changes
-        selected_stops_layer.commitChanges()
-
-        # load layer
-        project.addMapLayer(selected_stops_layer)
-        project.addMapLayer(circular_buffer_layer)
-
-        # set layer style
-        change_style_layer(selected_stops_layer, 'square', 'yellow', '2', None)
-
-        # return the selected stops
-        selected_stops = [feature for feature in selected_stops_layer.getFeatures()]
-
-        print("Nearby stops obtained!")
-
-        return selected_stops
-
     def get_stops_info(self, selected_stops: list):
         """Get stops info"""
 
@@ -366,9 +283,10 @@ class route_tracking(StopsLayer, PedestrianGraph, RouteGraph):
         self.create_pedestrian_layer()
 
         # create the layer from routes graph
-        self.create_graph_for_routes()    
+        self.create_graph_for_routes()   
         
-        # selected_stops = self.get_nearby_stops("stops", 9.1940190, 45.4571958, 100)
+        self.show_nearby_stops()
+        # selected_stops = self.get_nearby_stops("stops", 9.1940190, 45.4571958, 800)
         # stops_info = self.get_stops_info(selected_stops)
         # print("Stops info: ")
         # pp.pprint(stops_info)

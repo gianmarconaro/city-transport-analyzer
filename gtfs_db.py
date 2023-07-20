@@ -11,8 +11,6 @@ class Database:
         # check if the database exists
         if not os.path.isfile(self._path):
             raise Exception("Database not found")
-        else:
-            print("Database found")
                     
     def create_connection(self):
         """ 
@@ -66,6 +64,21 @@ class Database:
         self.close_connection(conn)
         return rows 
 
+    def select_stop_coordinates_by_id(self, stop_id):
+        """
+        Query all rows in the stops table
+        :param conn: the Connection object
+        :return:
+        """
+        conn = self.create_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT stop_lat, stop_lon FROM stops WHERE stop_id = ?", (stop_id,))
+
+        rows = cur.fetchall()
+
+        self.close_connection(conn)
+        return rows
+
     def select_information_given_stop_id(self, stop_id):
         """
         Query all relevant information given a stop_id
@@ -90,7 +103,28 @@ class Database:
 
         self.close_connection(conn)
         return rows
-    
+
+    def select_transports_by_stop_id(self, stop_id):
+        """
+        Query all relevant information given a stop_id
+        :param conn: the Connection object
+        :return:
+        """
+        conn = self.create_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT DISTINCT route_id
+            FROM trips AS tr
+            JOIN stop_times AS st ON tr.trip_id = st.trip_id
+            WHERE st.stop_id = ?
+            """, (stop_id,))
+
+        rows = cur.fetchall()
+
+        self.close_connection(conn)
+        return rows
+
     def select_transport_by_shape_id(self, shape_id):
         """
         Query 

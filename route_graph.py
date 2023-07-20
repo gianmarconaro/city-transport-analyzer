@@ -99,12 +99,6 @@ class RouteGraph:
         # load graph as layer
         self.load_routes_layer(GRAPH_PATH_GPKG, "routes_graph")
 
-        # change style of the layer
-        layer_point = project.mapLayersByName(LAYER_NAME)[0]
-        layer_line = project.mapLayersByName(LAYER_NAME)[1]
-        change_style_layer(layer_point, 'circle', 'blue', '0.5', None)
-        change_style_layer(layer_line, None, 'blue', None, '0.5')
-
     def load_routes_layer(self, layer_path: str, layer_name: str):
         """Load routes layer"""
 
@@ -120,6 +114,10 @@ class RouteGraph:
             print("Route graph loaded!")
             project.addMapLayer(layer_point)
             project.addMapLayer(layer_line)
+
+        # change style of the layer
+        change_style_layer(layer_point, 'circle', 'blue', '0.5', None)
+        change_style_layer(layer_line, None, 'blue', None, '0.5')
 
     def modify_graph(self, G: nx.MultiDiGraph):
         """Modifies the graph `G` by merging nodes with the same coordinates and merging stops with the graph."""
@@ -328,21 +326,21 @@ class RouteGraph:
         print("Start time: ", start_time)
 
         for stop_point, i in zip(stop_points, range(len(stop_points))):
-            # define the area
+            # define the rectangle area for the current stop point
             x_min = stop_point.x() - RADIUS
             y_min = stop_point.y() - RADIUS
             x_max = stop_point.x() + RADIUS
             y_max = stop_point.y() + RADIUS
 
-            # define the rectangle
+            # define the rectangle for the current stop point
             rectangle_area = QgsRectangle(x_min, y_min, x_max, y_max)
 
             # retrieve the intersected features with the rectangle
             intersected_stop_features = spatial_index_stops.intersects(rectangle_area)
-            intersected_walk_features = spatial_index_walk.intersects(rectangle_area)
 
             # if the list is not empty, retrieve the nearest neighbor of the current stop point
             if len(intersected_stop_features) > 0:
+                # get the nearest walk point to the stop point
                 current_walk_point_feature_id = spatial_index_walk.nearestNeighbor(stop_point, 1, 0)[0] # return a list of ID ordered by distance
 
                 # retrieve the point from the id_feature
@@ -354,29 +352,44 @@ class RouteGraph:
                 # retrieve the id of the current stop point (id on graph)
                 current_stop_point_id = point_to_id_stop[stop_point]
 
-                # create a sub spatial index with the intersected walk points
-                sub_spatial_index_walk = QgsSpatialIndex()
-
-                for intersected_walk_feature_id in intersected_walk_features:
-                    # fill the sub spatial index with the intersected walk points
-                    sub_feature_walk = QgsFeature()
-                    sub_point = feature_id_walk_to_point[intersected_walk_feature_id]
-                    sub_feature_walk.setGeometry(QgsGeometry.fromPointXY(sub_point))
-                    sub_feature_walk.setId(intersected_walk_feature_id)
-                    sub_spatial_index_walk.addFeature(sub_feature_walk)
-
                 for stop_feature_id in intersected_stop_features:
-                    # create a new spatial index with the intersected stops
-
                     # retrieve the point from the feature id
                     intersected_stop_point = feature_id_stop_to_point[stop_feature_id]
                     # intersected_stop_point_geometry = spatial_index_stops.geometry(stop_feature_id) prova questa alternativa e ottenere la geometria
 
                     # retrieve the id of the point (id on graph)
                     intersected_stop_point_id = point_to_id_stop[intersected_stop_point]
+
+                    # define the area of the rectangle for the intersected stop point
+                    x_min = intersected_stop_point.x() - RADIUS
+                    y_min = intersected_stop_point.y() - RADIUS
+                    x_max = intersected_stop_point.x() + RADIUS
+                    y_max = intersected_stop_point.y() + RADIUS
+
+                    # define the rectangle for the intersected stop point
+                    rectangle_area = QgsRectangle(x_min, y_min, x_max, y_max)
+
+                    # retrieve the intersected features with the rectangle
+                    intersected_walk_features = spatial_index_walk.intersects(rectangle_area)
+
+                    # create a sub spatial index with the intersected walk points
+                    sub_spatial_index_walk = QgsSpatialIndex()  
+
+                    for intersected_walk_feature_id in intersected_walk_features:
+                    # fill the sub spatial index with the intersected walk points
+                        sub_feature_walk = QgsFeature()
+                        sub_point = feature_id_walk_to_point[intersected_walk_feature_id]
+                        sub_feature_walk.setGeometry(QgsGeometry.fromPointXY(sub_point))
+                        sub_feature_walk.setId(intersected_walk_feature_id)
+                        sub_spatial_index_walk.addFeature(sub_feature_walk)
                     
                     if intersected_stop_point != stop_point and not G.has_edge(current_stop_point_id, intersected_stop_point_id):
-                        nearest_walk_point_feature_id = sub_spatial_index_walk.nearestNeighbor(intersected_stop_point, 1, 0)[0] # return a list of ID ordered by distance
+                        # if intersected walk featrue è vuoto, calcola il nearest node su spatial index walk
+                        if len(intersected_walk_features) == 0:
+                            # get the nearest walk point to the stop point
+                            nearest_walk_point_feature_id = spatial_index_walk.nearestNeighbor(intersected_stop_point, 1, 0)[0]
+                        else:
+                            nearest_walk_point_feature_id = sub_spatial_index_walk.nearestNeighbor(intersected_stop_point, 1, 0)[0] # return a list of ID ordered by distance
 
                         # retrieve the point from the id_feature
                         nearest_walk_point = feature_id_walk_to_point[nearest_walk_point_feature_id]
@@ -385,10 +398,10 @@ class RouteGraph:
                         nearest_walk_point_id = point_to_id_walk[nearest_walk_point]
 
                         # calculate the shortest path distance between the two points
-                        distance_meters = nx.shortest_path_length(G_walk, current_walk_point_id, nearest_walk_point_id)
+                        distance_meters = nx.shortest_path_length(G_walk, current_walk_point_id, nearest_walk_point_id, weight='length')
 
                         # add the new edge to the graph
-                        G.add_edge(current_stop_point_id, intersected_stop_point_id, distance=distance_meters, transport="walk")
+                        G.add_edge(current_stop_point_id, intersected_stop_point_id, weight=distance_meters, transport="walk")
             else:
                 print("No points found!")
 
