@@ -407,7 +407,7 @@ class RouteGraph:
 
             if i % 50 == 0:
                 partial_time = datetime.datetime.now()
-                print("Point: ", i)
+                print("Point ", i, " of ", len(stop_points), " processed")
                 print("Partial time: ", partial_time - start_time)
 
         print("Subgraphs merged!")

@@ -286,14 +286,7 @@ class route_tracking(StopsLayer, PedestrianGraph, RouteGraph, Analysis):
         self.create_graph_for_routes()   
         
         self.show_nearby_stops()
-        # selected_stops = self.get_nearby_stops("stops", 9.1940190, 45.4571958, 800)
-        # stops_info = self.get_stops_info(selected_stops)
-        # print("Stops info: ")
-        # pp.pprint(stops_info)
-
-        # orig = (9.3008493, 45.3877852)
-        # dest = (9.29043305, 45.3951232)
-
+        
         # paths = self.calculate_n_shortest_paths(G, orig, dest, 10)
         # pp.pprint(paths)
 

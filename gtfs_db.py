@@ -72,7 +72,7 @@ class Database:
         """
         conn = self.create_connection()
         cur = conn.cursor()
-        cur.execute("SELECT stop_lat, stop_lon FROM stops WHERE stop_id = ?", (stop_id,))
+        cur.execute("SELECT stop_lat, stop_lon, stop_name FROM stops WHERE stop_id = ?", (stop_id,))
 
         rows = cur.fetchall()
 

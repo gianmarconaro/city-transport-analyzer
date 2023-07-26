@@ -71,16 +71,16 @@ class StopsLayer:
             # transports_string = ", ".join(transports_list)
 
             # add a feature with geometry
-            fet = QgsFeature()
-            fet.setAttributes([stop_id, stop_name, lon, lat, wheelchair_boarding])
+            feature = QgsFeature()
+            feature.setAttributes([stop_id, stop_name, lon, lat, wheelchair_boarding])
 
             # create geometry
             point = QgsPointXY(stop[3], stop[2])
             geometry = QgsGeometry.fromPointXY(point)
-            fet.setGeometry(geometry)
+            feature.setGeometry(geometry)
 
             # add the geometry to the layer
-            writer.addFeature(fet)
+            writer.addFeature(feature)
 
         # takes all the stop id and then make a query to retrieve short name of the transport passing by all the stops id
         # result[0] -> stop_id

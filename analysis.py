@@ -1,8 +1,7 @@
 from qgis.PyQt.QtCore import Qt, QSettings, QTranslator, QCoreApplication, QVariant
 from qgis.PyQt.QtGui import QIcon, QCursor, QColor
 from qgis.PyQt.QtWidgets import QAction, QInputDialog
-from qgis.core import QgsProject, QgsVectorLayer, QgsFeature, QgsRectangle, QgsGeometry, QgsPointXY ,QgsWkbTypes, QgsFields, QgsField, QgsVectorFileWriter, QgsMarkerSymbol, QgsLineSymbol, QgsSingleSymbolRenderer, QgsFillSymbol, QgsDistanceArea, QgsUnitTypes, QgsSpatialIndex, QgsCoordinateReferenceSystem
-from qgis.gui import QgsMapToolEmitPoint, QgsMapMouseEvent, QgsMapToolIdentifyFeature
+from qgis.core import QgsProject, QgsVectorLayer, QgsFeature, QgsRectangle, QgsGeometry, QgsPointXY, QgsFields, QgsField, QgsGeometryUtils, QgsLineSymbol, QgsFillSymbol, QgsDistanceArea, QgsUnitTypes, QgsSpatialIndex, QgsCoordinateReferenceSystem
 from qgis.utils import iface
 from qgis.core import Qgis
 
@@ -25,6 +24,7 @@ import geopandas as gpd
 import datetime
 
 DISTANCE = 1000
+DISTANCE_EDGE = 50
 
 class Analysis:
     def get_integer_from_user(self):
@@ -33,18 +33,18 @@ class Analysis:
         stop_id, check = QInputDialog.getText(None, "Insert the ID of the stop that you want to analyse", "Stop ID:")
 
         if check:
-            if stop_id.isdigit():
-                database = Database()
-                stop_coord = database.select_stop_coordinates_by_id(stop_id)
-
-                if stop_coord:
-                    return stop_id, stop_coord[0]
-                else:
-                    iface.messageBar().pushMessage("Error", "Stop ID not found, try another one", level=Qgis.Critical, duration=5)
-                    return self.get_integer_from_user()
-            else:
+            if stop_id == "":
                 # Error message
                 iface.messageBar().pushMessage("Error", "You have to insert a stop ID", level=Qgis.Critical, duration=5)
+                return self.get_integer_from_user()
+            
+            database = Database()
+            stop_info = database.select_stop_coordinates_by_id(stop_id)
+
+            if stop_info:
+                return stop_id, stop_info[0]
+            else:
+                iface.messageBar().pushMessage("Error", "Stop ID not found, try another one", level=Qgis.Critical, duration=5)
                 return self.get_integer_from_user()
         else:
             return None, None
@@ -55,6 +55,10 @@ class Analysis:
         LAYER_NAME_STOPS = "stops"
         LAYER_NAME_BUFFER = "circular_buffer"
         LAYER_NAME_SELECTED_STOPS = "selected_stops"
+        LAYER_NAME_DISCARDED_STOPS = "discarded_stops"
+        LAYER_NAME_SHORTEST_PATHS = "shortest_paths"
+        LAYER_NAME_STARTING_POINT = "starting_point"
+        GRAPH_PATH_GML = self._path + "/graphs/pedestrian_graph.graphml"
 
         # check if the layer is already present. If is present, delete it
         project = QgsProject.instance()
@@ -62,6 +66,12 @@ class Analysis:
             project.removeMapLayer(project.mapLayersByName(LAYER_NAME_SELECTED_STOPS)[0])
         if project.mapLayersByName(LAYER_NAME_BUFFER):
             project.removeMapLayer(project.mapLayersByName(LAYER_NAME_BUFFER)[0])
+        if project.mapLayersByName(LAYER_NAME_DISCARDED_STOPS):
+            project.removeMapLayer(project.mapLayersByName(LAYER_NAME_DISCARDED_STOPS)[0])
+        if project.mapLayersByName(LAYER_NAME_SHORTEST_PATHS):
+            project.removeMapLayer(project.mapLayersByName(LAYER_NAME_SHORTEST_PATHS)[0])
+        if project.mapLayersByName(LAYER_NAME_STARTING_POINT):
+            project.removeMapLayer(project.mapLayersByName(LAYER_NAME_STARTING_POINT)[0])
 
         # get stop ID from user
         current_stop_id, stop = self.get_integer_from_user()
@@ -70,9 +80,10 @@ class Analysis:
         if current_stop_id is None and stop is None:
             return
 
-        # get coordinates of the stop
+        # get coordinates and the name of the stop
         x_coord = stop[1]
         y_coord = stop[0]
+        current_stop_name = stop[2]
 
         # get the transports of the stop
         database = Database()
@@ -101,8 +112,22 @@ class Analysis:
         circular_buffer = self.create_and_load_layer_circular_buffer(crs, starting_point_geometry, stops_layer)
 
         # create and load layer for the selected and discarded stops
-        self.create_and_load_layer_selected_stops(crs, fields, stops_layer, circular_buffer, current_stop_transports_list, current_stop_id)
-    
+        selected_stops = self.create_and_load_layer_selected_stops(crs, fields, stops_layer, circular_buffer, current_stop_transports_list, current_stop_id)
+
+        # load pedestrian graph
+        G_walk = ox.load_graphml(GRAPH_PATH_GML,
+                            node_dtypes={'fid': int, 'osmid': str, 'x': float, 'y': float},
+                            edge_dtypes={'fid': int, 'u': str, 'v': str, 'key': int, 'weight': float, 'transport': str, 'from': str, 'to': str})
+        
+        # get the nearest node of the starting point
+        starting_point_nearest_node = ox.nearest_nodes(G_walk, x_coord, y_coord)
+
+        # create a list with the information of the starting stop
+        starting_stop_info = [current_stop_id, current_stop_name, starting_point_nearest_node]
+
+        # create and load layer for the shortest paths
+        self.create_and_load_layer_shortest_paths(crs, selected_stops, starting_stop_info, G_walk)
+
     def create_and_load_layer_starting_point(self, crs: QgsCoordinateReferenceSystem, fields: QgsFields, starting_point_geometry: QgsGeometry):
         """Create a layer to store the starting point and fill it with the starting point"""
 
@@ -169,6 +194,8 @@ class Analysis:
     def create_and_load_layer_selected_stops(self, crs: QgsCoordinateReferenceSystem, fields: QgsFields, stops_layer: QgsVectorLayer, circular_buffer: QgsGeometry, current_stop_transports_list: list, current_stop_id: QgsGeometry):
         """Create a layer to store the selected stops and fill it with the selected stops"""
 
+        selected_stops_dict = defaultdict(dict)
+
         database = Database()
         project = QgsProject.instance()
         
@@ -214,11 +241,14 @@ class Analysis:
                         discarded_stops_layer.addFeature(new_feature)
                     else:
                         # add the feature to the layer
-                        print("Selected stop transports: ", selected_stop_transports_list)
                         selected_stops_layer.addFeature(new_feature)
+                        
+                        # add the feature to the dictionary, the key is the point and the two values are the ID and the name of the stop
+                        selected_stops_dict[stop_point] = [feature["ID"], feature["Stop_name"]]
 
         # commit changes
         selected_stops_layer.commitChanges()
+        discarded_stops_layer.commitChanges()
 
         # change style of the layer
         change_style_layer(selected_stops_layer, 'square', 'yellow', '2', None)
@@ -228,4 +258,77 @@ class Analysis:
         project.addMapLayer(selected_stops_layer)
         project.addMapLayer(discarded_stops_layer)
 
-        print("Starting point transports: ", current_stop_transports_list)       
+        print("Starting point transports: ", current_stop_transports_list)
+
+        return selected_stops_dict
+
+    def create_and_load_layer_shortest_paths(self, crs: QgsCoordinateReferenceSystem, selected_stops_dict: list, starting_stop_info: list, G_walk: nx.Graph):
+        """Create a layer to store the shortest paths and fill it with the shortest paths"""
+
+        # if selected_stops_dict is empty, return
+        if not selected_stops_dict:
+            print("No admitted stops found")
+            return
+
+        # create a layer to store the shortest paths
+        shortest_paths_layer = QgsVectorLayer("LineString?crs=" + crs.authid(), "shortest_paths", "memory")
+
+        # get the information of the starting stop
+        starting_stop_id = starting_stop_info[0]
+        starting_stop_name = starting_stop_info[1]
+        starting_point_nearest_node = starting_stop_info[2]
+
+        # define fields for feature attributes
+        fields = QgsFields()
+        fields.append(QgsField("From", QVariant.String))
+        fields.append(QgsField("From_Stop_Name", QVariant.String))
+        fields.append(QgsField("To", QVariant.String))
+        fields.append(QgsField("To_Stop_Name", QVariant.String))
+        fields.append(QgsField("Length", QVariant.Double))
+
+        # add fields to the layer
+        shortest_paths_layer.dataProvider().addAttributes(fields)
+
+        # start editing the layer
+        shortest_paths_layer.startEditing()
+
+        for stop_key in selected_stops_dict:
+            # get the coordinates of the selected stop
+            stop = stop_key.asPoint()
+
+            # get the ID and the name of the selected stop
+            selected_stop_id = selected_stops_dict[stop_key][0]
+            selected_stop_name = selected_stops_dict[stop_key][1]
+
+            # get the nearest node of the selected stop
+            stop_nearest_node = ox.nearest_nodes(G_walk, stop.x(), stop.y())
+
+            # get the shortest path
+            shortest_path = nx.shortest_path(G_walk, starting_point_nearest_node, stop_nearest_node, weight="length")
+
+            # get the length of the shortest path
+            shortest_paths_length = nx.shortest_path_length(G_walk, starting_point_nearest_node, stop_nearest_node, weight="length")
+
+            # create a list of points with a list comprehension
+            path_line = [QgsPointXY(G_walk.nodes[node]["x"], G_walk.nodes[node]["y"]) for node in shortest_path]
+
+            # create a geometry
+            path_geometry = QgsGeometry.fromPolylineXY(path_line)
+
+            # create a new feature
+            new_feature = QgsFeature(shortest_paths_layer.fields())
+            new_feature.setGeometry(path_geometry)
+            new_feature.setAttributes([starting_stop_id, starting_stop_name, selected_stop_id, selected_stop_name, shortest_paths_length])
+
+            # add the feature to the layer
+            shortest_paths_layer.addFeature(new_feature)
+
+        # commit changes
+        shortest_paths_layer.commitChanges()
+
+        # change style of the layer
+        change_style_layer(shortest_paths_layer, None, 'black', None, '0.5')
+
+        # load layer
+        project = QgsProject.instance()
+        project.addMapLayer(shortest_paths_layer)
