@@ -35,6 +35,7 @@ import os.path
 from .gtfs_db import Database
 from .stops_layer import StopsLayer
 from .pedestrian_graph import PedestrianGraph
+from .drive_graph import DriveGraph
 from .route_graph import RouteGraph
 from .analysis import Analysis
 from .utils import change_style_layer
@@ -47,7 +48,7 @@ import pprint as pp
 import geopandas as gpd
 import datetime
 
-class route_tracking(StopsLayer, PedestrianGraph, RouteGraph, Analysis):
+class route_tracking(StopsLayer, PedestrianGraph, DriveGraph, RouteGraph, Analysis):
     """QGIS Plugin Implementation."""
 
     # set the right path for cache folder
@@ -282,10 +283,13 @@ class route_tracking(StopsLayer, PedestrianGraph, RouteGraph, Analysis):
         # create the layer from pedestrian graph
         self.create_pedestrian_layer()
 
+        # create the layer from drive graph
+        self.create_drive_layer()
+
         # create the layer from routes graph
         self.create_graph_for_routes()   
         
-        self.show_nearby_stops()
+        self.start_analysis()
         
         # paths = self.calculate_n_shortest_paths(G, orig, dest, 10)
         # pp.pprint(paths)

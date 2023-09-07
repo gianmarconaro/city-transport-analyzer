@@ -60,8 +60,14 @@ class RouteGraph:
                 is_first_value = False
 
                 # select all transports using the shape_id
-                transport = database.select_transport_by_shape_id(shape_id)
-                transport = str(transport[0][0])
+                transport_info = database.select_transport_by_shape_id(shape_id)
+                # the result is composed by a list of tuples and each tuple is composed by trasnport and route_type
+                # we are sure that the list contains only one tuple
+                # extract the two values
+                # retrieve transport from transport
+                transport = str(transport_info[0][0])
+                # retrieve route_type from transport
+                route_type = int(transport_info[0][1])
 
                 # update previous shape
                 prev_shape = shape
@@ -78,7 +84,7 @@ class RouteGraph:
                 # add edge to graph with euclidean distance as weight
                 starting_node = prev_shape[0] + "_" + str(prev_shape[3])
                 ending_node = shape[0] + "_" + str(shape[3])
-                G.add_edge(starting_node, ending_node, weight=euclidean_distance, transport=transport)
+                G.add_edge(starting_node, ending_node, weight=euclidean_distance, transport=transport, route_type=route_type)
 
                 # update previous shape
                 prev_shape = shape
@@ -116,8 +122,8 @@ class RouteGraph:
             project.addMapLayer(layer_line)
 
         # change style of the layer
-        change_style_layer(layer_point, 'circle', 'blue', '0.5', None)
-        change_style_layer(layer_line, None, 'blue', None, '0.5')
+        change_style_layer(layer_point, 'circle', 'orange', '0.5', None)
+        change_style_layer(layer_line, None, 'orange', None, '0.5')
 
     def modify_graph(self, G: nx.MultiDiGraph):
         """Modifies the graph `G` by merging nodes with the same coordinates and merging stops with the graph."""
@@ -401,7 +407,7 @@ class RouteGraph:
                         distance_meters = nx.shortest_path_length(G_walk, current_walk_point_id, nearest_walk_point_id, weight='length')
 
                         # add the new edge to the graph
-                        G.add_edge(current_stop_point_id, intersected_stop_point_id, weight=distance_meters, transport="walk")
+                        G.add_edge(current_stop_point_id, intersected_stop_point_id, weight=distance_meters, transport="walk", route_type=15)
             else:
                 print("No points found!")
 

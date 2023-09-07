@@ -134,9 +134,10 @@ class Database:
         conn = self.create_connection()
         cur = conn.cursor()
         cur.execute("""
-            SELECT DISTINCT route_id
+            SELECT DISTINCT tr.route_id, ro.route_type
             FROM trips AS tr
             JOIN shapes AS sh ON tr.shape_id = sh.shape_id
+            JOIN routes AS ro ON tr.route_id = ro.route_id
             WHERE sh.shape_id = ?
             """, (shape_id,))
 

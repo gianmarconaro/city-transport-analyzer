@@ -13,10 +13,9 @@ from .gtfs_db import Database
 from .stops_layer import StopsLayer
 from .pedestrian_graph import PedestrianGraph
 from .route_graph import RouteGraph
-from .utils import change_style_layer
+from .utils import change_style_layer, route_type_to_speed
 
-from collections import defaultdict
-from itertools import islice
+from collections import defaultdict, deque
 import networkx as nx
 import osmnx as ox
 import pprint as pp
@@ -27,7 +26,7 @@ DISTANCE = 1000
 DISTANCE_EDGE = 50
 
 class Analysis:
-    def get_integer_from_user(self):
+    def get_stop_from_user(self):
         """Get stop ID from user"""
 
         stop_id, check = QInputDialog.getText(None, "Insert the ID of the stop that you want to analyse", "Stop ID:")
@@ -35,50 +34,75 @@ class Analysis:
         if check:
             if stop_id == "":
                 # Error message
-                iface.messageBar().pushMessage("Error", "You have to insert a stop ID", level=Qgis.Critical, duration=5)
-                return self.get_integer_from_user()
+                iface.messageBar().pushMessage("Error", "You must insert a stop ID", level=Qgis.Critical, duration=5)
+                return self.get_stop_from_user()
             
             database = Database()
             stop_info = database.select_stop_coordinates_by_id(stop_id)
 
             if stop_info:
-                return stop_id, stop_info[0]
+                range = self.get_range_from_user()
+                if range:
+                    time = self.get_time_from_user()
+                    if time:
+                        return stop_id, stop_info[0], range, time
+                    else:
+                        return None, None, None, None
+                else:
+                    return None, None, None, None
             else:
                 iface.messageBar().pushMessage("Error", "Stop ID not found, try another one", level=Qgis.Critical, duration=5)
-                return self.get_integer_from_user()
+                return self.get_stop_from_user()
         else:
-            return None, None
+            iface.messageBar().pushMessage("Cancelled", "Operation cancelled", level=Qgis.Info, duration=5)
+            return None, None, None, None
+        
+    def get_range_from_user(self):
+        """Get range from user"""
+
+        range, check = QInputDialog.getInt(None, "Insert the range of the analysis", "Range (m):", 1000, 1, 2000, 100)
+
+        if check:
+            return range
+        else:
+            iface.messageBar().pushMessage("Cancelled", "Operation cancelled", level=Qgis.Info, duration=5)
+            return None
+        
+    def get_time_from_user(self):
+        """Get time from user"""
+
+        time, check = QInputDialog.getInt(None, "Insert the time of the analysis", "Time (m):", 10, 1, 15, 100)
+
+        if check:
+            return time
+        else:
+            iface.messageBar().pushMessage("Cancelled", "Operation cancelled", level=Qgis.Info, duration=5)
+            return None
             
-    def show_nearby_stops(self):
+    def start_analysis(self):
         """Get nearby stops"""
 
         LAYER_NAME_STOPS = "stops"
-        LAYER_NAME_BUFFER = "circular_buffer"
-        LAYER_NAME_SELECTED_STOPS = "selected_stops"
-        LAYER_NAME_DISCARDED_STOPS = "discarded_stops"
-        LAYER_NAME_SHORTEST_PATHS = "shortest_paths"
-        LAYER_NAME_STARTING_POINT = "starting_point"
         GRAPH_PATH_GML = self._path + "/graphs/pedestrian_graph.graphml"
+        GRAPH_PATH_GML_ROUTE = self._path + "/graphs/routes_graph.graphml"
 
-        # check if the layer is already present. If is present, delete it
+        # get the project
         project = QgsProject.instance()
-        if project.mapLayersByName(LAYER_NAME_SELECTED_STOPS):
-            project.removeMapLayer(project.mapLayersByName(LAYER_NAME_SELECTED_STOPS)[0])
-        if project.mapLayersByName(LAYER_NAME_BUFFER):
-            project.removeMapLayer(project.mapLayersByName(LAYER_NAME_BUFFER)[0])
-        if project.mapLayersByName(LAYER_NAME_DISCARDED_STOPS):
-            project.removeMapLayer(project.mapLayersByName(LAYER_NAME_DISCARDED_STOPS)[0])
-        if project.mapLayersByName(LAYER_NAME_SHORTEST_PATHS):
-            project.removeMapLayer(project.mapLayersByName(LAYER_NAME_SHORTEST_PATHS)[0])
-        if project.mapLayersByName(LAYER_NAME_STARTING_POINT):
-            project.removeMapLayer(project.mapLayersByName(LAYER_NAME_STARTING_POINT)[0])
 
         # get stop ID from user
-        current_stop_id, stop = self.get_integer_from_user()
+        current_stop_id, stop, range, time = self.get_stop_from_user()
 
         # check if the user has inserted a stop ID
-        if current_stop_id is None and stop is None:
+        if current_stop_id is None or stop is None or range is None or time is None:
             return
+        
+        # remove layers
+        self.remove_layers(project)
+
+        # load pedestrian graph
+        G_walk = ox.load_graphml(GRAPH_PATH_GML,
+                            node_dtypes={'fid': int, 'osmid': str, 'x': float, 'y': float},
+                            edge_dtypes={'fid': int, 'u': str, 'v': str, 'key': int, 'weight': float, 'transport': str, 'from': str, 'to': str})
 
         # get coordinates and the name of the stop
         x_coord = stop[1]
@@ -108,16 +132,20 @@ class Analysis:
         # create and load layer for the starting point
         self.create_and_load_layer_starting_point(crs, fields, starting_point_geometry)
 
+        # load routes graph
+        G = nx.read_graphml(GRAPH_PATH_GML_ROUTE)
+
+        # create and load layer for the nearest starting point
+        nearest_starting_point_node = self.create_and_load_nearest_starting_point(G, crs, fields, starting_point_geometry)
+
+        # calculate reachable edges from the starting point
+        self.create_and_load_layer_reachable_nodes(G, crs, nearest_starting_point_node, time, G_walk)
+
         # create and load layer for the circular buffer
-        circular_buffer = self.create_and_load_layer_circular_buffer(crs, starting_point_geometry, stops_layer)
+        circular_buffer = self.create_and_load_layer_circular_buffer(crs, starting_point_geometry, stops_layer, range)
 
         # create and load layer for the selected and discarded stops
         selected_stops = self.create_and_load_layer_selected_stops(crs, fields, stops_layer, circular_buffer, current_stop_transports_list, current_stop_id)
-
-        # load pedestrian graph
-        G_walk = ox.load_graphml(GRAPH_PATH_GML,
-                            node_dtypes={'fid': int, 'osmid': str, 'x': float, 'y': float},
-                            edge_dtypes={'fid': int, 'u': str, 'v': str, 'key': int, 'weight': float, 'transport': str, 'from': str, 'to': str})
         
         # get the nearest node of the starting point
         starting_point_nearest_node = ox.nearest_nodes(G_walk, x_coord, y_coord)
@@ -127,6 +155,38 @@ class Analysis:
 
         # create and load layer for the shortest paths
         self.create_and_load_layer_shortest_paths(crs, selected_stops, starting_stop_info, G_walk)
+
+        # find the intersections
+        self.find_intersections()
+
+    def remove_layers(self, project: QgsProject):
+        """Remove layers from the project"""
+
+        # layer names
+        LAYER_NAME_BUFFER = "circular_buffer"
+        LAYER_NAME_SELECTED_STOPS = "selected_stops"
+        LAYER_NAME_DISCARDED_STOPS = "discarded_stops"
+        LAYER_NAME_SHORTEST_PATHS = "shortest_paths"
+        LAYER_NAME_STARTING_POINT = "starting_point"
+        LAYER_NAME_STARTING_POINT_ROUTE = "starting_point_route"
+        LAYER_NAME_SERVICE_AREA = "service_area"
+
+        # check if the layer is already present. If is present, delete it
+        project = QgsProject.instance()
+        if project.mapLayersByName(LAYER_NAME_SELECTED_STOPS):
+            project.removeMapLayer(project.mapLayersByName(LAYER_NAME_SELECTED_STOPS)[0])
+        if project.mapLayersByName(LAYER_NAME_BUFFER):
+            project.removeMapLayer(project.mapLayersByName(LAYER_NAME_BUFFER)[0])
+        if project.mapLayersByName(LAYER_NAME_DISCARDED_STOPS):
+            project.removeMapLayer(project.mapLayersByName(LAYER_NAME_DISCARDED_STOPS)[0])
+        if project.mapLayersByName(LAYER_NAME_SHORTEST_PATHS):
+            project.removeMapLayer(project.mapLayersByName(LAYER_NAME_SHORTEST_PATHS)[0])
+        if project.mapLayersByName(LAYER_NAME_STARTING_POINT):
+            project.removeMapLayer(project.mapLayersByName(LAYER_NAME_STARTING_POINT)[0])
+        if project.mapLayersByName(LAYER_NAME_STARTING_POINT_ROUTE):
+            project.removeMapLayer(project.mapLayersByName(LAYER_NAME_STARTING_POINT_ROUTE)[0])
+        if project.mapLayersByName(LAYER_NAME_SERVICE_AREA):
+            project.removeMapLayer(project.mapLayersByName(LAYER_NAME_SERVICE_AREA)[0])
 
     def create_and_load_layer_starting_point(self, crs: QgsCoordinateReferenceSystem, fields: QgsFields, starting_point_geometry: QgsGeometry):
         """Create a layer to store the starting point and fill it with the starting point"""
@@ -157,7 +217,48 @@ class Analysis:
         project = QgsProject.instance()
         project.addMapLayer(starting_point_layer)
 
-    def create_and_load_layer_circular_buffer(self, crs: QgsCoordinateReferenceSystem, starting_point_geometry: QgsGeometry, stops_layer: QgsVectorLayer):
+    def create_and_load_nearest_starting_point(self, G: nx.MultiDiGraph, crs: QgsCoordinateReferenceSystem, fields: QgsFields, starting_point_geometry: QgsGeometry):
+        """Create a layer to store the nearest starting point and fill it with the nearest starting point"""
+
+        # calculate the nearest node of the starting point
+        nearest_node = ox.nearest_nodes(G, starting_point_geometry.asPoint().x(), starting_point_geometry.asPoint().y())
+
+        # get the coordinates of the nearest node
+        nearest_node_x = G.nodes[nearest_node]["x"]
+        nearest_node_y = G.nodes[nearest_node]["y"]
+
+        # convert the node into a QgsPoint
+        nearest_node_point = QgsPointXY(nearest_node_x, nearest_node_y)
+
+        # load the point into a separate layer alone
+        nearest_starting_point_layer = QgsVectorLayer("Point?crs=" + crs.authid(), "starting_point_route", "memory")
+
+        # add fields to the layer
+        nearest_starting_point_layer.dataProvider().addAttributes(fields)
+
+        # start editing the layer
+        nearest_starting_point_layer.startEditing()
+
+        # create a new feature
+        new_feature = QgsFeature(nearest_starting_point_layer.fields())
+        new_feature.setGeometry(QgsGeometry.fromPointXY(nearest_node_point))
+
+        # add the feature to the layer
+        nearest_starting_point_layer.addFeature(new_feature)
+
+        # commit changes
+        nearest_starting_point_layer.commitChanges()
+
+        # change style of the layer
+        change_style_layer(nearest_starting_point_layer, 'square', 'blue', '2', None)
+
+        # load layer
+        project = QgsProject.instance()
+        project.addMapLayer(nearest_starting_point_layer)
+
+        return nearest_node
+
+    def create_and_load_layer_circular_buffer(self, crs: QgsCoordinateReferenceSystem, starting_point_geometry: QgsGeometry, stops_layer: QgsVectorLayer, range: int):
         """Create a layer to store the circular buffer and fill it with the circular buffer"""
 
         project = QgsProject.instance()
@@ -168,7 +269,7 @@ class Analysis:
         distance_area.setEllipsoid(project.ellipsoid())
 
         # convert distance from meters to degrees
-        distance_degrees = distance_area.convertLengthMeasurement(DISTANCE, QgsUnitTypes.DistanceUnit.Degrees)
+        distance_degrees = distance_area.convertLengthMeasurement(range, QgsUnitTypes.DistanceUnit.Degrees)
 
         # create a circular buffer
         circular_buffer = starting_point_geometry.buffer(distance_degrees, segments=32)
@@ -327,8 +428,167 @@ class Analysis:
         shortest_paths_layer.commitChanges()
 
         # change style of the layer
-        change_style_layer(shortest_paths_layer, None, 'black', None, '0.5')
+        change_style_layer(shortest_paths_layer, None, 'orange', None, '0.5')
 
         # load layer
         project = QgsProject.instance()
         project.addMapLayer(shortest_paths_layer)
+
+    def create_and_load_layer_reachable_nodes(self, G: nx.MultiDiGraph, crs: QgsCoordinateReferenceSystem, starting_point: str, time_limit: int, G_walk: nx.Graph):
+        """Calculate reachable edges in a time limit"""
+
+        start_time = datetime.datetime.now()
+        print("Starting time: ", start_time)
+
+        # define a queue to store the nodes to visit
+        queue = deque([(starting_point, 0)])
+        reachable_edges = set()
+        reachable_nodes = set()
+
+        # iterate over the queue
+        while queue:
+            current_node, time_elapsed = queue.popleft()
+
+            # add the current node to the set of reachable edges if is not present
+            if current_node not in reachable_nodes:
+                reachable_nodes.add(current_node)
+
+                # iterate over the edges of the current node
+                for neighbor, edge_data in G[current_node].items():
+                    distance = edge_data["weight"] # meters
+                    route_type = edge_data["route_type"] # km/h
+                    transport = edge_data["transport"]
+
+                    # calculate the speed of the edge
+                    speed = route_type_to_speed(route_type)
+
+                    # calculate the time to travel the edge
+                    # distance in meters, speed in km/h, time in minutes
+                    travel_time = (distance / 1000) / speed * 60
+
+                    if time_elapsed + travel_time <= time_limit: 
+                        queue.append((neighbor, time_elapsed + travel_time))
+                        reachable_edges.add((current_node, neighbor, distance, transport))
+
+        # load layer
+        self.load_layer_reachable_edges(G, crs, list(reachable_edges), G_walk)
+
+    def load_layer_reachable_edges(self, G: nx.MultiDiGraph, crs: QgsCoordinateReferenceSystem, reachable_edges: list, G_walk: nx.Graph):
+        """Create a layer to store the service area and fill it with the service area"""
+
+        # if reachable_edges is empty, return
+        if not reachable_edges:
+            print("No reachable edges found")
+            return
+
+        # create a layer to store the service area
+        service_area_layer = QgsVectorLayer("LineString?crs=" + crs.authid(), "service_area", "memory")
+
+        # define fields for feature attributes
+        fields = QgsFields()
+        fields.append(QgsField("From", QVariant.String))
+        fields.append(QgsField("To", QVariant.String))
+        fields.append(QgsField("Weight", QVariant.Double))
+        fields.append(QgsField("Transport", QVariant.String))
+
+        # add fields to the layer
+        service_area_layer.dataProvider().addAttributes(fields)
+
+        # start editing the layer
+        service_area_layer.startEditing()
+
+        for edge in reachable_edges:
+            # if the transport is walk, calculate the shortest path between the two nodes via pedestrian graph and add the edges to the service area
+            if edge[3] == "walk":
+                # calculate the nearest node of the starting point and of the ending point
+                starting_point_nearest_node = ox.nearest_nodes(G_walk, G.nodes[edge[0]]["x"], G.nodes[edge[0]]["y"])
+                ending_point_nearest_node = ox.nearest_nodes(G_walk, G.nodes[edge[1]]["x"], G.nodes[edge[1]]["y"])
+
+                # get the shortest path
+                shortest_path = nx.shortest_path(G_walk, starting_point_nearest_node, ending_point_nearest_node, weight="weight")
+
+                # create a list of points with a list comprehension
+                path_line = [QgsPointXY(G_walk.nodes[node]["x"], G_walk.nodes[node]["y"]) for node in shortest_path]
+
+                # create a geometry
+                edge_geometry = QgsGeometry.fromPolylineXY(path_line)
+
+                # create a new feature
+                new_feature = QgsFeature(service_area_layer.fields())
+                new_feature.setGeometry(edge_geometry)
+            else:
+                # get the coordinates of the edge
+                edge_coordinates = [(G.nodes[edge[0]]["x"], G.nodes[edge[0]]["y"]), (G.nodes[edge[1]]["x"], G.nodes[edge[1]]["y"])]
+
+                # create QgsPoints 
+                p1 = QgsPointXY(edge_coordinates[0][0], edge_coordinates[0][1])
+                p2 = QgsPointXY(edge_coordinates[1][0], edge_coordinates[1][1])
+
+                # create a geometry
+                edge_geometry = QgsGeometry.fromPolylineXY([p1, p2])
+
+            # create a new feature
+            new_feature = QgsFeature(service_area_layer.fields())
+            new_feature.setGeometry(edge_geometry)
+
+            new_feature.setAttributes([edge[0], edge[1], edge[2], edge[3]])
+
+            # add the feature to the layer
+            service_area_layer.addFeature(new_feature)
+
+        # commit changes
+        service_area_layer.commitChanges()
+
+        # change style of the layer
+        change_style_layer(service_area_layer, None, 'lavander', None, '0.5')
+
+        # load layer
+        project = QgsProject.instance()
+        project.addMapLayer(service_area_layer)
+
+    def find_intersections(self):
+        # layer names 
+        LAYER_NAME_DRIVE_GRAPH = "drive_graph"
+        LAYER_NAME_SERVICE_AREA = "service_area"
+        print("Intersections")
+
+        project = QgsProject.instance()
+        drive_graph_layer = project.mapLayersByName(LAYER_NAME_DRIVE_GRAPH)[0]
+        service_area_layer = project.mapLayersByName(LAYER_NAME_SERVICE_AREA)[0]
+
+        # default dict to store the intersections
+        intersections_dict = defaultdict(list)
+
+        # calculate the intersections between the two layers and calculate how many times an edge is intersected and store also the name of the street. I wanna use the spatial index so I don't iterate over all the features and Is important to count how many times an edge is intersected and if an edge is intersected 0 times, it means that the edge is not inside the service area and I don't have to consider itù
+        # create a spatial index for the drive graph layer
+        drive_graph_index = QgsSpatialIndex(drive_graph_layer.getFeatures())
+
+        # iterate over the features of the service area layer
+        for service_area_feature in service_area_layer.getFeatures():
+            # get the geometry of the service area feature
+            service_area_geometry = service_area_feature.geometry()
+
+            # find the features that intersect with the service area feature
+            intersecting_drive_graph_ids = drive_graph_index.intersects(service_area_geometry.boundingBox())
+
+            # iterate over the features that intersect with the service area feature
+            for drive_graph_id in intersecting_drive_graph_ids:
+                # get the feature
+                drive_graph_feature = drive_graph_layer.getFeature(drive_graph_id)
+                drive_graph_geometry = drive_graph_feature.geometry()
+
+                # check if the service area feature intersects with the drive graph feature
+                if service_area_geometry.intersects(drive_graph_geometry):
+                    # get the name of the drive graph feature
+                    drive_graph_street_name = drive_graph_feature["name"]
+
+                    # get the name of the street
+                    street_name = drive_graph_feature["name"]
+
+                    # add to the dictionary. The key is the name of the street while the the value are the number of intersections
+                    intersections_dict[drive_graph_street_name].append(street_name)
+        
+        # print name of the street and number of intersections
+        for key, value in intersections_dict.items():
+            print(key, len(value))
+        

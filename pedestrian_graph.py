@@ -65,4 +65,4 @@ class PedestrianGraph:
             project.addMapLayer(layer)
         
         # change style of the layer
-        change_style_layer(layer, None, 'red', None, '0.5')
+        change_style_layer(layer, None, 'darkgreen', None, '0.5')
