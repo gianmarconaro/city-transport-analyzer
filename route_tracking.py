@@ -45,7 +45,6 @@ from itertools import islice
 import networkx as nx
 import osmnx as ox
 import pprint as pp
-import geopandas as gpd
 import datetime
 
 class route_tracking(StopsLayer, PedestrianGraph, DriveGraph, RouteGraph, Analysis):
@@ -256,9 +255,6 @@ class route_tracking(StopsLayer, PedestrianGraph, DriveGraph, RouteGraph, Analys
 
         # return n shortest paths
         return n_shortest_paths
-
-
-                        
 
     def run(self):
         """Run method that performs all the real work"""

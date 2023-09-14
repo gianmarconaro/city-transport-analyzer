@@ -23,7 +23,7 @@ def route_type_to_speed(route_type: int) -> int:
         return 23
     # subway, metro
     elif route_type == 1:
-        return 40
+        return 60
     # rail (long distance travel)
     elif route_type == 2:
         return 160

@@ -1,6 +1,6 @@
 from qgis.PyQt.QtCore import Qt, QSettings, QTranslator, QCoreApplication, QVariant
-from qgis.PyQt.QtGui import QIcon, QCursor, QColor
-from qgis.PyQt.QtWidgets import QAction, QInputDialog
+from qgis.PyQt.QtGui import QIcon, QCursor, QColor, QIntValidator
+from qgis.PyQt.QtWidgets import QAction, QInputDialog, QLineEdit, QDialog, QVBoxLayout, QLabel, QCheckBox, QPushButton, QDialogButtonBox
 from qgis.core import QgsProject, QgsVectorLayer, QgsFeature, QgsRectangle, QgsGeometry, QgsPointXY, QgsFields, QgsField, QgsGeometryUtils, QgsLineSymbol, QgsFillSymbol, QgsDistanceArea, QgsUnitTypes, QgsSpatialIndex, QgsCoordinateReferenceSystem
 from qgis.utils import iface
 from qgis.core import Qgis
@@ -22,85 +22,186 @@ import pprint as pp
 import geopandas as gpd
 import datetime
 
-DISTANCE = 1000
-DISTANCE_EDGE = 50
-
 class Analysis:
-    def get_stop_from_user(self):
-        """Get stop ID from user"""
-
-        stop_id, check = QInputDialog.getText(None, "Insert the ID of the stop that you want to analyse", "Stop ID:")
-
-        if check:
-            if stop_id == "":
+    def error_manager(self, input, stop_info):
+        # managing errors for stop ID
+            if input[0] == "":
                 # Error message
                 iface.messageBar().pushMessage("Error", "You must insert a stop ID", level=Qgis.Critical, duration=5)
-                return self.get_stop_from_user()
-            
-            database = Database()
-            stop_info = database.select_stop_coordinates_by_id(stop_id)
+                return self.get_inputs()
 
-            if stop_info:
-                range = self.get_range_from_user()
-                if range:
-                    time = self.get_time_from_user()
-                    if time:
-                        return stop_id, stop_info[0], range, time
-                    else:
-                        return None, None, None, None
-                else:
-                    return None, None, None, None
-            else:
+            if not stop_info:
                 iface.messageBar().pushMessage("Error", "Stop ID not found, try another one", level=Qgis.Critical, duration=5)
-                return self.get_stop_from_user()
-        else:
-            iface.messageBar().pushMessage("Cancelled", "Operation cancelled", level=Qgis.Info, duration=5)
-            return None, None, None, None
+                return self.get_inputs()
+            
+            # managing errors for range
+            if input[1] == "":
+                # Error message
+                iface.messageBar().pushMessage("Error", "You must insert a range", level=Qgis.Critical, duration=5)
+                return self.get_inputs()
+            
+            # managing errors for time
+            if input[2] == "":
+                # Error message
+                iface.messageBar().pushMessage("Error", "You must insert a time", level=Qgis.Critical, duration=5)
+                return self.get_inputs()
+            
+    def get_inputs(self):
+        """Get multiple input from user via dialog. One string input, two integer input and one checkbox"""
+            
+        # create a dialog
+        dialog = QDialog()
+        dialog.setWindowTitle("Analysis")
+
+        # create a layout
+        layout = QVBoxLayout()
+
+        # create a label
+        label = QLabel("Insert the ID of the stop that you want to analyse")
+        layout.addWidget(label)
+
+        # create a line edit
+        self.stop_id_line_edit = QLineEdit()
+        self.stop_id_line_edit.setPlaceholderText("Stop ID")
+        layout.addWidget(self.stop_id_line_edit)
+
+        # create a label
+        label = QLabel("Insert the range of the analysis")
+        layout.addWidget(label)
+
+        # create a line edit
+        self.range_line_edit = QLineEdit()
+        self.range_line_edit.setPlaceholderText("Range (m) [100-2000]")
+        self.range_line_edit.setValidator(QIntValidator(100, 2000))
+        layout.addWidget(self.range_line_edit)
+
+        # create a label
+        label = QLabel("Insert the time of the analysis")
+        layout.addWidget(label)
+
+        # create a line edit
+        self.time_line_edit = QLineEdit()
+        self.time_line_edit.setPlaceholderText("Time (m) [5-20]")
+        self.time_line_edit.setValidator(QIntValidator(5, 20))
+        layout.addWidget(self.time_line_edit)
+
+        # create a checkbox
+        self.checkbox = QCheckBox("Detailed Analysis (May affect the performance of the application)")
+        layout.addWidget(self.checkbox)
+
+        # create a button box
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+
+        # set the layout
+        dialog.setLayout(layout)
+
+        # show the dialog
+        result = dialog.exec_()
+
+        if result == QDialog.Accepted:
+            if self.range_line_edit.hasAcceptableInput() and self.time_line_edit.hasAcceptableInput():
+                # get all the inputs
+                input = [self.stop_id_line_edit.text(), self.range_line_edit.text(), self.time_line_edit.text()]
+
+                database = Database()
+                stop_info = database.select_stop_coordinates_by_id(input[0])
+
+                # managing errors
+                self.error_manager(input, stop_info)
+
+                # get the input from the checkbox
+                if self.checkbox.isChecked():
+                    checkbox = True
+                else:
+                    checkbox = False
+
+                return input, checkbox, stop_info[0]
+            else:
+                iface.messageBar().pushMessage("Error", "Range and time must be within the range", level=Qgis.Critical, duration=5)
+                return self.get_inputs()
+        else: return None, None, None
+
+    # def get_stop_from_user(self):
+    #     """Get stop ID from user"""
+
+    #     stop_id, check = QInputDialog.getText(None, "Insert the ID of the stop that you want to analyse", "Stop ID:")
+
+    #     if check:
+    #         if stop_id == "":
+    #             # Error message
+    #             iface.messageBar().pushMessage("Error", "You must insert a stop ID", level=Qgis.Critical, duration=5)
+    #             return self.get_stop_from_user()
+            
+    #         database = Database()
+    #         stop_info = database.select_stop_coordinates_by_id(stop_id)
+
+    #         if stop_info:
+    #             range = self.get_range_from_user()
+    #             if range:
+    #                 time = self.get_time_from_user()
+    #                 if time:
+    #                     return stop_id, stop_info[0], range, time
+    #                 else:
+    #                     return None, None, None, None
+    #             else:
+    #                 return None, None, None, None
+    #         else:
+    #             iface.messageBar().pushMessage("Error", "Stop ID not found, try another one", level=Qgis.Critical, duration=5)
+    #             return self.get_stop_from_user()
+    #     else:
+    #         iface.messageBar().pushMessage("Cancelled", "Operation cancelled", level=Qgis.Info, duration=5)
+    #         return None, None, None, None
         
-    def get_range_from_user(self):
-        """Get range from user"""
+    # def get_range_from_user(self):
+    #     """Get range from user"""
 
-        range, check = QInputDialog.getInt(None, "Insert the range of the analysis", "Range (m):", 1000, 1, 2000, 100)
+    #     range, check = QInputDialog.getInt(None, "Insert the range of the analysis", "Range (m):", 1000, 100, 2000, 100)
 
-        if check:
-            return range
-        else:
-            iface.messageBar().pushMessage("Cancelled", "Operation cancelled", level=Qgis.Info, duration=5)
-            return None
+    #     if check:
+    #         return range
+    #     else:
+    #         iface.messageBar().pushMessage("Cancelled", "Operation cancelled", level=Qgis.Info, duration=5)
+    #         return None
         
-    def get_time_from_user(self):
-        """Get time from user"""
+    # def get_time_from_user(self):
+    #     """Get time from user"""
 
-        time, check = QInputDialog.getInt(None, "Insert the time of the analysis", "Time (m):", 10, 1, 15, 100)
+    #     time, check = QInputDialog.getInt(None, "Insert the time of the analysis", "Time (m):", 10, 5, 20, 1)
 
-        if check:
-            return time
-        else:
-            iface.messageBar().pushMessage("Cancelled", "Operation cancelled", level=Qgis.Info, duration=5)
-            return None
+    #     if check:
+    #         return time
+    #     else:
+    #         iface.messageBar().pushMessage("Cancelled", "Operation cancelled", level=Qgis.Info, duration=5)
+    #         return None
             
     def start_analysis(self):
         """Get nearby stops"""
 
         LAYER_NAME_STOPS = "stops"
-        GRAPH_PATH_GML = self._path + "/graphs/pedestrian_graph.graphml"
+        GRAPH_PATH_GML_WALK = self._path + "/graphs/pedestrian_graph.graphml"
         GRAPH_PATH_GML_ROUTE = self._path + "/graphs/routes_graph.graphml"
 
         # get the project
         project = QgsProject.instance()
 
-        # get stop ID from user
-        current_stop_id, stop, range, time = self.get_stop_from_user()
+        input, checkbox, stop = self.get_inputs()
 
         # check if the user has inserted a stop ID
-        if current_stop_id is None or stop is None or range is None or time is None:
+        if input is None or checkbox is None:
             return
+        
+        current_stop_id = input[0]
+        range = int(input[1])
+        time = int(input[2])
         
         # remove layers
         self.remove_layers(project)
 
         # load pedestrian graph
-        G_walk = ox.load_graphml(GRAPH_PATH_GML,
+        G_walk = ox.load_graphml(GRAPH_PATH_GML_WALK,
                             node_dtypes={'fid': int, 'osmid': str, 'x': float, 'y': float},
                             edge_dtypes={'fid': int, 'u': str, 'v': str, 'key': int, 'weight': float, 'transport': str, 'from': str, 'to': str})
 
@@ -139,7 +240,7 @@ class Analysis:
         nearest_starting_point_node = self.create_and_load_nearest_starting_point(G, crs, fields, starting_point_geometry)
 
         # calculate reachable edges from the starting point
-        self.create_and_load_layer_reachable_nodes(G, crs, nearest_starting_point_node, time, G_walk)
+        self.create_and_load_layer_reachable_nodes(G, crs, nearest_starting_point_node, time, G_walk, checkbox)
 
         # create and load layer for the circular buffer
         circular_buffer = self.create_and_load_layer_circular_buffer(crs, starting_point_geometry, stops_layer, range)
@@ -434,46 +535,40 @@ class Analysis:
         project = QgsProject.instance()
         project.addMapLayer(shortest_paths_layer)
 
-    def create_and_load_layer_reachable_nodes(self, G: nx.MultiDiGraph, crs: QgsCoordinateReferenceSystem, starting_point: str, time_limit: int, G_walk: nx.Graph):
+    def create_and_load_layer_reachable_nodes(self, G: nx.DiGraph, crs: QgsCoordinateReferenceSystem, starting_point: str, time_limit: int, G_walk: nx.Graph, checkbox: bool):
         """Calculate reachable edges in a time limit"""
-
+    
         start_time = datetime.datetime.now()
         print("Starting time: ", start_time)
 
         # define a queue to store the nodes to visit
         queue = deque([(starting_point, 0)])
-        reachable_edges = set()
-        reachable_nodes = set()
+        reachable_edges = []
+        visited_edges = set()
 
         # iterate over the queue
         while queue:
             current_node, time_elapsed = queue.popleft()
+            # TODO: (1,2) aggiunto e poi (2,1) potrebbe riprenderlo, evita ció
 
-            # add the current node to the set of reachable edges if is not present
-            if current_node not in reachable_nodes:
-                reachable_nodes.add(current_node)
-
-                # iterate over the edges of the current node
-                for neighbor, edge_data in G[current_node].items():
+            for _, end_node, edge_data in G.out_edges(current_node, data=True):
+                if (current_node, end_node) not in visited_edges:
                     distance = edge_data["weight"] # meters
                     route_type = edge_data["route_type"] # km/h
                     transport = edge_data["transport"]
 
-                    # calculate the speed of the edge
                     speed = route_type_to_speed(route_type)
+                    travel_time = (distance / 1000) / speed * 60 # minutes
 
-                    # calculate the time to travel the edge
-                    # distance in meters, speed in km/h, time in minutes
-                    travel_time = (distance / 1000) / speed * 60
-
-                    if time_elapsed + travel_time <= time_limit: 
-                        queue.append((neighbor, time_elapsed + travel_time))
-                        reachable_edges.add((current_node, neighbor, distance, transport))
+                    if time_elapsed + travel_time <= time_limit:
+                        reachable_edges.append((current_node, end_node, distance, transport))
+                        visited_edges.add((current_node, end_node))
+                        queue.append((end_node, time_elapsed + travel_time))
 
         # load layer
-        self.load_layer_reachable_edges(G, crs, list(reachable_edges), G_walk)
+        self.load_layer_reachable_edges(G, crs, reachable_edges, G_walk, checkbox)
 
-    def load_layer_reachable_edges(self, G: nx.MultiDiGraph, crs: QgsCoordinateReferenceSystem, reachable_edges: list, G_walk: nx.Graph):
+    def load_layer_reachable_edges(self, G: nx.MultiDiGraph, crs: QgsCoordinateReferenceSystem, reachable_edges: list, G_walk: nx.Graph, checkbox: bool):
         """Create a layer to store the service area and fill it with the service area"""
 
         # if reachable_edges is empty, return
@@ -499,7 +594,7 @@ class Analysis:
 
         for edge in reachable_edges:
             # if the transport is walk, calculate the shortest path between the two nodes via pedestrian graph and add the edges to the service area
-            if edge[3] == "walk":
+            if edge[3] == "walk" and checkbox:
                 # calculate the nearest node of the starting point and of the ending point
                 starting_point_nearest_node = ox.nearest_nodes(G_walk, G.nodes[edge[0]]["x"], G.nodes[edge[0]]["y"])
                 ending_point_nearest_node = ox.nearest_nodes(G_walk, G.nodes[edge[1]]["x"], G.nodes[edge[1]]["y"])
@@ -546,15 +641,49 @@ class Analysis:
         project = QgsProject.instance()
         project.addMapLayer(service_area_layer)
 
+
+
+
+
+        # for edge in reachable_edges:
+        #     # get the coordinates of the edge
+        #     edge_coordinates = [(G.nodes[edge[0]]["x"], G.nodes[edge[0]]["y"]), (G.nodes[edge[1]]["x"], G.nodes[edge[1]]["y"])]
+
+        #     # create QgsPoints 
+        #     p1 = QgsPointXY(edge_coordinates[0][0], edge_coordinates[0][1])
+        #     p2 = QgsPointXY(edge_coordinates[1][0], edge_coordinates[1][1])
+
+        #     # create a geometry
+        #     edge_geometry = QgsGeometry.fromPolylineXY([p1, p2])
+
+        #     # create a new feature
+        #     new_feature = QgsFeature(service_area_layer.fields())
+        #     new_feature.setGeometry(edge_geometry)
+
+        #     new_feature.setAttributes([edge[0], edge[1], edge[2], edge[3]])
+
+        #     # add the feature to the layer
+        #     service_area_layer.addFeature(new_feature)
+
+        # # commit changes
+        # service_area_layer.commitChanges()
+
+        # # change style of the layer
+        # change_style_layer(service_area_layer, None, 'lavander', None, '0.5')
+
+        # # load layer
+        # project = QgsProject.instance()
+        # project.addMapLayer(service_area_layer)
+
     def find_intersections(self):
         # layer names 
         LAYER_NAME_DRIVE_GRAPH = "drive_graph"
-        LAYER_NAME_SERVICE_AREA = "service_area"
+        LAYER_NAME_SHORTEST_PATH = "shortest_paths"
         print("Intersections")
 
         project = QgsProject.instance()
         drive_graph_layer = project.mapLayersByName(LAYER_NAME_DRIVE_GRAPH)[0]
-        service_area_layer = project.mapLayersByName(LAYER_NAME_SERVICE_AREA)[0]
+        service_area_layer = project.mapLayersByName(LAYER_NAME_SHORTEST_PATH)[0]
 
         # default dict to store the intersections
         intersections_dict = defaultdict(list)
@@ -580,15 +709,18 @@ class Analysis:
                 # check if the service area feature intersects with the drive graph feature
                 if service_area_geometry.intersects(drive_graph_geometry):
                     # get the name of the drive graph feature
-                    drive_graph_street_name = drive_graph_feature["name"]
-
-                    # get the name of the street
+                    osmid = drive_graph_feature["osmid"]
                     street_name = drive_graph_feature["name"]
 
+                    if osmid not in intersections_dict:
+                        # add to the dictionary. The key is the name of the street while the the value are the number of intersections
+                        intersections_dict[(osmid, street_name)] = 1
+
                     # add to the dictionary. The key is the name of the street while the the value are the number of intersections
-                    intersections_dict[drive_graph_street_name].append(street_name)
+                    intersections_dict[(osmid, street_name)] += 1
         
-        # print name of the street and number of intersections
-        for key, value in intersections_dict.items():
-            print(key, len(value))
+        # write the dictionary into a json file
+        with open(self._path + "/intersections.txt", "w") as outfile:
+            for (id, street_name), occurrences in intersections_dict.items():
+                outfile.write(f"{id} - {street_name}: {occurrences}\n")
         

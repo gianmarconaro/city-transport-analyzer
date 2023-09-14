@@ -322,6 +322,9 @@ class RouteGraph:
     def merge_subgraphs(self, G: nx.MultiDiGraph, G_walk: nx.MultiDiGraph):
         """Merge subgraphs"""
 
+        # TODO: Provare a rimuovere gli archi a piedi fra i due punti collegandoli direttamente con il path reale. Per fare ció l'idea é quella di creare un
+        # grafo secondario dove mettere solo le connessioni mentre in quello grande mettere lo shortest path. 
+
         print("Merging subgraphs...")
 
         # convert nodes of the graph into points
