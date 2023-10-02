@@ -17,6 +17,7 @@ from .gtfs_db import Database
 from .utils import change_style_layer
 from .resources import *
 
+
 class StopsLayer:
     def create_stops_layer(self):
         """Create a layer with stops"""
@@ -27,7 +28,6 @@ class StopsLayer:
         project = QgsProject.instance()
         crs = project.crs()
 
-        # Create stops layer only if not present in shapefiles folder
         if os.path.exists(STOPS_LAYER_PATH):
             if project.mapLayersByName(STOPS_LAYER_NAME):
                 return
@@ -47,9 +47,8 @@ class StopsLayer:
         fields.append(QgsField("Lon", QVariant.Double))
         fields.append(QgsField("Lan", QVariant.Double))
         fields.append(QgsField("Wheelchair_boarding", QVariant.Int))
-        # fields.append(QgsField("Transports", QVariant.String)) the cost is too high
+        # fields.append(QgsField("Transports", QVariant.String)) # the cost is too high
 
-        # define writer
         writer = QgsVectorFileWriter(
             STOPS_LAYER_PATH, "UTF-8", fields, QgsWkbTypes.Point, crs, "ESRI Shapefile"
         )
@@ -70,7 +69,7 @@ class StopsLayer:
             # transports_list = [transport[0] for transport in transports]
             # transports_string = ", ".join(transports_list)
 
-            # add a feature with geometry
+            # create a new feature
             feature = QgsFeature()
             feature.setAttributes([stop_id, stop_name, lon, lat, wheelchair_boarding])
 
@@ -79,17 +78,14 @@ class StopsLayer:
             geometry = QgsGeometry.fromPointXY(point)
             feature.setGeometry(geometry)
 
-            # add the geometry to the layer
             writer.addFeature(feature)
 
         # takes all the stop id and then make a query to retrieve short name of the transport passing by all the stops id
         # result[0] -> stop_id
         # result[1] -> short_name
 
-        # delete the writer to flush features to disk
         del writer
 
-        # load layer
         self.load_stops_layer(STOPS_LAYER_PATH, STOPS_LAYER_NAME)
 
         print("Stops layer created!")
@@ -102,8 +98,6 @@ class StopsLayer:
         if not layer.isValid():
             print("Layer failed to load!")
         else:
-            # Add layer to the registry
             project.addMapLayer(layer)
-        
-        # change style of the layer
+
         change_style_layer(layer, "square", "green", "2", None)

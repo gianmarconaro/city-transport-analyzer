@@ -8,6 +8,7 @@ from .utils import change_style_layer
 
 import osmnx as ox
 
+
 class PedestrianGraph:
     def create_pedestrian_layer(self):
         """Create a layer with pedestrian"""
@@ -16,9 +17,9 @@ class PedestrianGraph:
         GRAPH_PATH_GPKG = self._path + "/graphs/pedestrian_graph.gpkg"
         GRAPH_PATH_GML = self._path + "/graphs/pedestrian_graph.graphml"
         GRAPH_NAME = "pedestrian_graph"
-        
+
         project = QgsProject.instance()
-        
+
         if os.path.exists(GRAPH_PATH_GPKG):
             if project.mapLayersByName(GRAPH_NAME):
                 return
@@ -37,17 +38,16 @@ class PedestrianGraph:
                     line = line.split(",")
                     polygon_points.append((float(line[0]), float(line[1])))
 
-        # import from osmnx the graph of the city with pedestrian network
         polygon = Polygon(polygon_points)
         pedestrian_graph = ox.graph_from_polygon(polygon, network_type="walk")
 
-        # import and save it as a layer
-        ox.save_graph_geopackage(pedestrian_graph, filepath=GRAPH_PATH_GPKG, directed=False)
+        ox.save_graph_geopackage(
+            pedestrian_graph, filepath=GRAPH_PATH_GPKG, directed=False
+        )
         ox.save_graphml(pedestrian_graph, filepath=GRAPH_PATH_GML)
 
         print("Pedestrian graph created!")
 
-        # load layer
         self.load_pedestrian_layer(GRAPH_PATH_GPKG, GRAPH_NAME)
 
     def load_pedestrian_layer(self, layer_path: str, layer_name: str):
@@ -60,9 +60,7 @@ class PedestrianGraph:
         if not layer.isValid():
             print("Layer failed to load!")
         else:
-            # Add layer to the registry
             print("Pedestrian graph loaded!")
             project.addMapLayer(layer)
-        
-        # change style of the layer
-        change_style_layer(layer, None, 'darkgreen', None, '0.5')
+
+        change_style_layer(layer, None, "darkgreen", None, "0.5")

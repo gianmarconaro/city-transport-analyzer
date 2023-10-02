@@ -133,5 +133,3 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
     def on_click_forward(self):
         iface.messageBar().pushMessage("Success!", "GTFS Data already imported!", level=Qgis.Success, duration=5)
         self.close()
-
-

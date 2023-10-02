@@ -24,8 +24,26 @@
 from qgis.PyQt.QtCore import Qt, QSettings, QTranslator, QCoreApplication, QVariant
 from qgis.PyQt.QtGui import QIcon, QCursor, QColor
 from qgis.PyQt.QtWidgets import QAction
-from qgis.core import QgsProject, QgsVectorLayer, QgsFeature, QgsRectangle, QgsGeometry, QgsPointXY ,QgsWkbTypes, QgsFields, QgsField, QgsVectorFileWriter, QgsMarkerSymbol, QgsLineSymbol, QgsSingleSymbolRenderer, QgsFillSymbol, QgsDistanceArea, QgsUnitTypes, QgsSpatialIndex, QgsMapLayer
-from qgis.gui import QgsMapToolEmitPoint, QgsMapMouseEvent
+from qgis.core import (
+    QgsProject,
+    QgsVectorLayer,
+    QgsFeature,
+    QgsRectangle,
+    QgsGeometry,
+    QgsPointXY,
+    QgsWkbTypes,
+    QgsFields,
+    QgsField,
+    QgsVectorFileWriter,
+    QgsMarkerSymbol,
+    QgsLineSymbol,
+    QgsSingleSymbolRenderer,
+    QgsFillSymbol,
+    QgsDistanceArea,
+    QgsUnitTypes,
+    QgsSpatialIndex,
+    QgsMapLayer,
+)
 from qgis.utils import iface
 
 from .resources import *
@@ -47,11 +65,12 @@ import osmnx as ox
 import pprint as pp
 import datetime
 
+
 class route_tracking(StopsLayer, PedestrianGraph, DriveGraph, RouteGraph, Analysis):
     """QGIS Plugin Implementation."""
 
     # set the right path for cache folder
-    ox.config(use_cache=True, cache_folder='../../../cache')
+    ox.config(use_cache=True, cache_folder="../../../cache")
 
     def __init__(self, iface):
         """Constructor.
@@ -66,11 +85,10 @@ class route_tracking(StopsLayer, PedestrianGraph, DriveGraph, RouteGraph, Analys
         # initialize plugin directory
         self.plugin_dir = os.path.dirname(__file__)
         # initialize locale
-        locale = QSettings().value('locale/userLocale')[0:2]
+        locale = QSettings().value("locale/userLocale")[0:2]
         locale_path = os.path.join(
-            self.plugin_dir,
-            'i18n',
-            'route_tracking_{}.qm'.format(locale))
+            self.plugin_dir, "i18n", "route_tracking_{}.qm".format(locale)
+        )
 
         if os.path.exists(locale_path):
             self.translator = QTranslator()
@@ -79,7 +97,7 @@ class route_tracking(StopsLayer, PedestrianGraph, DriveGraph, RouteGraph, Analys
 
         # Declare instance attributes
         self.actions = []
-        self.menu = self.tr(u'&Thesis_Plugin')
+        self.menu = self.tr("&Thesis_Plugin")
 
         # Check if plugin was started the first time in current QGIS session
         # Must be set in initGui() to survive plugin reloads
@@ -101,19 +119,20 @@ class route_tracking(StopsLayer, PedestrianGraph, DriveGraph, RouteGraph, Analys
         :rtype: QString
         """
         # noinspection PyTypeChecker,PyArgumentList,PyCallByClass
-        return QCoreApplication.translate('route_tracking', message)
+        return QCoreApplication.translate("route_tracking", message)
 
     def add_action(
-            self,
-            icon_path,
-            text,
-            callback,
-            enabled_flag=True,
-            add_to_menu=True,
-            add_to_toolbar=True,
-            status_tip=None,
-            whats_this=None,
-            parent=None):
+        self,
+        icon_path,
+        text,
+        callback,
+        enabled_flag=True,
+        add_to_menu=True,
+        add_to_toolbar=True,
+        status_tip=None,
+        whats_this=None,
+        parent=None,
+    ):
         """Add a toolbar icon to the toolbar.
 
         :param icon_path: Path to the icon for this action. Can be a resource
@@ -169,23 +188,22 @@ class route_tracking(StopsLayer, PedestrianGraph, DriveGraph, RouteGraph, Analys
             self.iface.addToolBarIcon(action)
 
         if add_to_menu:
-            self.iface.addPluginToMenu(
-                self.menu,
-                action)
+            self.iface.addPluginToMenu(self.menu, action)
 
         self.actions.append(action)
 
         return action
-    
+
     def initGui(self):
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
 
-        icon_path = ':/plugins/route_tracking/icon.png'
+        icon_path = ":/plugins/route_tracking/icon.png"
         self.add_action(
             icon_path,
-            text=self.tr(u'Thesis'),
+            text=self.tr("Thesis"),
             callback=self.run,
-            parent=self.iface.mainWindow())
+            parent=self.iface.mainWindow(),
+        )
 
         # will be set False in run()
         self.first_start = True
@@ -193,9 +211,7 @@ class route_tracking(StopsLayer, PedestrianGraph, DriveGraph, RouteGraph, Analys
     def unload(self):
         """Removes the plugin menu item and icon from QGIS GUI."""
         for action in self.actions:
-            self.iface.removePluginMenu(
-                self.tr(u'&Thesis_Plugin'),
-                action)
+            self.iface.removePluginMenu(self.tr("&Thesis_Plugin"), action)
             self.iface.removeToolBarIcon(action)
 
     def get_stops_info(self, selected_stops: list):
@@ -217,7 +233,18 @@ class route_tracking(StopsLayer, PedestrianGraph, DriveGraph, RouteGraph, Analys
             # get the stop info from the database
             stop_info = database.select_information_given_stop_id(stop_id)
             for row in stop_info:
-                trip_id, arrival_time, departure_time, stop_sequence, route_id, service_id, trip_headsign, route_short_name, route_long_name, route_type = row
+                (
+                    trip_id,
+                    arrival_time,
+                    departure_time,
+                    stop_sequence,
+                    route_id,
+                    service_id,
+                    trip_headsign,
+                    route_short_name,
+                    route_long_name,
+                    route_type,
+                ) = row
                 stop_info_query = {
                     "trip_id": trip_id,
                     "arrival_time": arrival_time,
@@ -228,33 +255,12 @@ class route_tracking(StopsLayer, PedestrianGraph, DriveGraph, RouteGraph, Analys
                     "trip_headsign": trip_headsign,
                     "route_short_name": route_short_name,
                     "route_long_name": route_long_name,
-                    "route_type": route_type
+                    "route_type": route_type,
                 }
                 stops_info[key] = stop_info_query
 
         # return the stops info
         return stops_info
-
-    def calculate_n_shortest_paths(self, G: nx.MultiDiGraph, origin: tuple, destination: tuple, n: int):
-        """Calculate n shortest paths between two nodes"""
-
-        print("Calculating n shortest paths...")
-
-        # get nearest nodes
-        origin = ox.nearest_nodes(G, origin[0], origin[1])
-        destination = ox.nearest_nodes(G, destination[0], destination[1])
-
-        # calculate n shortest paths
-        n_shortest_paths = list(islice(ox.k_shortest_paths(G, origin, destination, k=n, weight='weight'), n))
-
-        # calculate n shortest paths
-        # n_shortest_paths = list(islice(nx.all_shortest_paths(G, origin, destination, weight='weight'), n))
-
-        # print the number of paths
-        print("Number of paths: ", len(n_shortest_paths))
-
-        # return n shortest paths
-        return n_shortest_paths
 
     def run(self):
         """Run method that performs all the real work"""
@@ -269,35 +275,24 @@ class route_tracking(StopsLayer, PedestrianGraph, DriveGraph, RouteGraph, Analys
         self.dlg.show()
         # Run the dialog event loop
         result = self.dlg.exec_()
-    	
+
         start_time = datetime.datetime.now()
         print("Starting time: ", start_time)
 
-        # create the layer of points for the stops
         self.create_stops_layer()
-
-        # create the layer from pedestrian graph
         self.create_pedestrian_layer()
-
-        # create the layer from drive graph
         self.create_drive_layer()
+        self.create_graph_for_routes()
 
-        # create the layer from routes graph
-        self.create_graph_for_routes()   
-        
         self.start_analysis()
-        
-        # paths = self.calculate_n_shortest_paths(G, orig, dest, 10)
-        # pp.pprint(paths)
 
         # print current time
         end_time = datetime.datetime.now()
         print("Ending time: ", end_time)
         print("Total time: ", end_time - start_time)
-        
-        # See if OK was pressed
-        print("SIUM")
 
+        # See if OK was pressed
+        print("Finished")
 
         if result:
             # Do something useful here - delete the line containing pass and

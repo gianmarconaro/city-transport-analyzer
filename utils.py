@@ -1,20 +1,31 @@
-from qgis.core import QgsMarkerSymbol, QgsLineSymbol, QgsSingleSymbolRenderer, QgsMapLayer
+from qgis.core import (
+    QgsMarkerSymbol,
+    QgsLineSymbol,
+    QgsSingleSymbolRenderer,
+    QgsMapLayer,
+)
 
 from .resources import *
 
-def change_style_layer(layer_name: QgsMapLayer, name: str, color: str, size: str, width: str):
+
+def change_style_layer(
+    layer_name: QgsMapLayer, name: str, color: str, size: str, width: str
+):
     """Change style of a layer"""
 
-    # if is a point layer
+    # point layer
     if size is not None:
-        symbol = QgsMarkerSymbol.createSimple({'name': name, 'color': color, 'size': size})
-    
-    # if is a line layer
+        symbol = QgsMarkerSymbol.createSimple(
+            {"name": name, "color": color, "size": size}
+        )
+
+    # line layer
     elif width is not None:
-        symbol = QgsLineSymbol.createSimple({'color': color, 'width': width})
+        symbol = QgsLineSymbol.createSimple({"color": color, "width": width})
 
     renderer = QgsSingleSymbolRenderer(symbol)
     layer_name.setRenderer(renderer)
+
 
 def route_type_to_speed(route_type: int) -> int:
     """Convert route type to speed"""
