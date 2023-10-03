@@ -1,5 +1,6 @@
 GTFS_DB/
 graphs/
+shapefiles/
 polygons/
 intersections.txt
 

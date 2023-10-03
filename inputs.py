@@ -21,48 +21,47 @@ G_WALK = None
 class Inputs:
     def select_analysis_type(self):
         """Create a dialog that ask the user with 3 different buttons which analysis he wants to do and put a comment beside each button explaining what the analysis does"""
-
         dialog = QDialog()
+        dialog.setWindowTitle("Analysis type")
+
         layout = QVBoxLayout()
+        dialog.setFixedSize(400, 150)
 
-        dialog.setFixedSize(300, 150)
-
-        label = QLabel("Select the type of analysis you want to perform:")
-
-        button_service_area = QPushButton("Service Area")
-        button_nearby_stops = QPushButton("Nearby Stops")
-        button_both_analyses = QPushButton("Both Analyses")
-
-        button_service_area.setToolTip(
-            "Find the service area starting from\na stop with a custom time limit"
-        )
-        button_nearby_stops.setToolTip(
-            "Find the shortest paths between a starting stop and all\nthe other stops in the city that are in a certain distance limit"
-        )
-        button_both_analyses.setToolTip(
-            "Find the service area starting from a stop with a custom time limit\nand find the shortest paths between a starting stop and all\nthe other stops in the city that are in a certain distance limit"
-        )
-
+        label = QLabel("Select the analysis type")
         layout.addWidget(label)
-        layout.addWidget(button_service_area)
-        layout.addWidget(button_nearby_stops)
-        layout.addWidget(button_both_analyses)
 
+        # create in column two checkbox with the analysis type
+        # create the first checkbox
+        self.service_area_checkbox = QCheckBox("Service Area Analysis")
+        self.service_area_checkbox.setChecked(False)
+        layout.addWidget(self.service_area_checkbox)
+
+        # create the second checkbox
+        self.nearby_stops_checkbox = QCheckBox("Nearby Stops Analysis")
+        self.nearby_stops_checkbox.setChecked(False)
+        layout.addWidget(self.nearby_stops_checkbox)
+
+        # create the run button
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+
+        # add the layout to the dialog
         dialog.setLayout(layout)
-        dialog.setWindowTitle("Type Analysis")
 
-        # connect the buttons to the functions
-        button_service_area.clicked.connect(
-            lambda: start_service_area_analysis(self, dialog, *self.load_graphs())
-        )
-        button_nearby_stops.clicked.connect(
-            lambda: start_nearby_stops_paths_analysis(self, dialog, *self.load_graphs())
-        )
-        button_both_analyses.clicked.connect(
-            lambda: start_multi_analysis(self, dialog, *self.load_graphs())
-        )
+        # run the dialog
+        result = dialog.exec_()
+        if result == QDialog.Accepted:
+            if self.service_area_checkbox.isChecked():
+                start_service_area_analysis(self, dialog, *self.load_graphs())
+            if self.nearby_stops_checkbox.isChecked():
+                start_nearby_stops_paths_analysis(self, dialog, *self.load_graphs())
+            if self.service_area_checkbox.isChecked() and self.nearby_stops_checkbox.isChecked():
+                start_multi_analysis(self, dialog, *self.load_graphs())
+        else:
+            return 
 
-        dialog.exec_()
 
     def load_graphs(self):
         print("Loading graphs...")
