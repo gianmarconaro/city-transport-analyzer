@@ -25,7 +25,6 @@ from .resources import *
 from .gtfs_db import Database
 from .service_area_analysis import *
 from .nearby_stops_paths_analysis import *
-from .service_area_analysis import *
 
 import networkx as nx
 import osmnx as ox
@@ -38,9 +37,53 @@ def get_inputs_from_dialog_multi_analysis(inputs):
     dialog.setWindowTitle("Multi Analysis")
 
     layout = QVBoxLayout()
-    dialog.setFixedSize(400, 250)
+    dialog.setFixedSize(400, 325)
 
-    label = QLabel("Insert the ID of the stop that you want to analyse")
+    label = QLabel("Select the points layer to analyse the service area:")
+    layout.addWidget(label)
+
+    # create the combo box for service area analysis
+    layers = QgsProject.instance().mapLayers()
+    vector_layers = []
+    active_vector_layers_names = []
+
+    for layer in layers.values():
+        if layer.type() == QgsMapLayer.VectorLayer:
+            vector_layers.append(layer)
+
+    for layer in vector_layers:
+        if layer.geometryType() == QgsWkbTypes.PointGeometry:
+            active_vector_layers_names.append(layer.name())
+
+    inputs.points_combo_box = QComboBox()
+    inputs.points_combo_box.addItems(active_vector_layers_names)
+    inputs.points_combo_box.setPlaceholderText("Points Layer")
+    inputs.points_combo_box.setEditable(True)
+    inputs.points_combo_box.setMaxVisibleItems(5)
+
+    # define compleater
+    compleater = QCompleter(active_vector_layers_names)
+    compleater.setCaseSensitivity(Qt.CaseInsensitive)
+
+    inputs.points_combo_box.setCompleter(compleater)
+    layout.addWidget(inputs.points_combo_box)
+
+    label = QLabel("Insert the time of the service area analysis:")
+    layout.addWidget(label)
+
+    # create a line edit
+    inputs.time_line_edit = QLineEdit()
+    inputs.time_line_edit.setPlaceholderText("Time (m) [5-20]")
+    inputs.time_line_edit.setValidator(QIntValidator(5, 20))
+    layout.addWidget(inputs.time_line_edit)
+
+    # create a checkbox
+    inputs.checkbox = QCheckBox(
+        "Detailed Analysis (May affect drastically the performance)"
+    )
+    layout.addWidget(inputs.checkbox)
+
+    label = QLabel("Select the ID of the stop to analyse the nearby stops:")
     layout.addWidget(label)
 
     # create the combo box
@@ -55,7 +98,7 @@ def get_inputs_from_dialog_multi_analysis(inputs):
     inputs.stop_id_combo_box.setCompleter(compleater)
     layout.addWidget(inputs.stop_id_combo_box)
 
-    label = QLabel("Insert the range of the analysis")
+    label = QLabel("Insert the range of the nearby stops analysis:")
     layout.addWidget(label)
 
     # create a line edit
@@ -63,21 +106,6 @@ def get_inputs_from_dialog_multi_analysis(inputs):
     inputs.range_line_edit.setPlaceholderText("Range (m) [100-2000]")
     inputs.range_line_edit.setValidator(QIntValidator(100, 2000))
     layout.addWidget(inputs.range_line_edit)
-
-    label = QLabel("Insert the time of the analysis")
-    layout.addWidget(label)
-
-    # create a line edit
-    inputs.time_line_edit = QLineEdit()
-    inputs.time_line_edit.setPlaceholderText("Time (m) [5-20]")
-    inputs.time_line_edit.setValidator(QIntValidator(5, 20))
-    layout.addWidget(inputs.time_line_edit)
-
-    # create a checkbox
-    inputs.checkbox = QCheckBox(
-        "Detailed Analysis (May affect the performance of the application)"
-    )
-    layout.addWidget(inputs.checkbox)
 
     # create a button box
     button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -108,6 +136,12 @@ def get_inputs_from_dialog_multi_analysis(inputs):
         inputs.stop_id_combo_box.currentText()
     )
 
+    points = []
+    layer_name = inputs.points_combo_box.currentText()
+    points_layer = QgsProject.instance().mapLayersByName(layer_name)[0]
+    for feature in points_layer.getFeatures():
+        points.append(feature.geometry().asPoint())
+
     stop_id = inputs.stop_id_combo_box.currentText()
     time = inputs.time_line_edit.text()
     range = inputs.range_line_edit.text()
@@ -117,7 +151,7 @@ def get_inputs_from_dialog_multi_analysis(inputs):
     # managing errors
     handle_multi_analysis_inputs_errors(range, time)
 
-    return stop_id, int(range), int(time), precise_analysis, stop_info[0]
+    return points, stop_id, int(range), int(time), precise_analysis, stop_info[0]
 
 
 def handle_multi_analysis_inputs_errors(range, time):
@@ -145,72 +179,27 @@ def start_multi_analysis(
     inputs, starting_dialog: QDialog, G: nx.DiGraph, G_walk: nx.MultiDiGraph
 ):
     """Start the multi analysis"""
-    starting_dialog.close()
-
-    stops_layer = QgsProject.instance().mapLayersByName("stops")[0]
+    if starting_dialog:
+        starting_dialog.close()
 
     try:
         (
-            stop_id,
+            points,
+            current_stop_id,
             range,
             time,
             checkbox,
             stop_info,
         ) = get_inputs_from_dialog_multi_analysis(inputs)
-        y_coord, x_coord, stop_name = stop_info
     except TypeError:
         return
 
     crs = QgsProject.instance().crs()
 
-    starting_point = QgsPointXY(x_coord, y_coord)
-    starting_point_geometry = QgsGeometry.fromPointXY(starting_point)
-
-    fields = QgsFields()
-    fields.append(QgsField("ID", QVariant.String))
-    fields.append(QgsField("Stop_name", QVariant.String))
-
-    create_and_load_layer_starting_point(crs, fields, starting_point_geometry)
-
     # service area analysis
-    nearest_starting_point_node = create_and_load_nearest_starting_point(
-        G, crs, fields, starting_point_geometry
-    )
-
-    create_and_load_layer_reachable_nodes(
-        G, crs, nearest_starting_point_node, time, G_walk, checkbox
-    )
+    service_area_analysis_operations(crs, points, time, checkbox, G, G_walk)
 
     # nearby stops analysis
-    current_stop_transports = Database().select_transports_by_stop_id(stop_id)
-    current_stop_transports_list = [
-        transport[0] for transport in current_stop_transports
-    ]
-
-    circular_buffer = create_and_load_layer_circular_buffer(
-        crs, starting_point_geometry, stops_layer, range
+    nearby_stops_paths_analysis_operations(
+        inputs, crs, current_stop_id, range, stop_info, G_walk
     )
-
-    selected_stops = create_and_load_layer_selected_stops(
-        crs,
-        fields,
-        stops_layer,
-        circular_buffer,
-        current_stop_transports_list,
-        stop_id,
-    )
-
-    starting_point_nearest_node = ox.nearest_nodes(G_walk, x_coord, y_coord)
-
-    starting_stop_info = [
-        stop_id,
-        stop_name,
-        starting_point_nearest_node,
-    ]
-
-    if selected_stops:
-        create_and_load_layer_shortest_paths(
-            crs, selected_stops, starting_stop_info, G_walk
-        )
-
-        find_intersections(inputs)

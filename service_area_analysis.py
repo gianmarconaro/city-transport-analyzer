@@ -17,6 +17,8 @@ from qgis.core import (
     QgsPointXY,
     QgsFields,
     QgsField,
+    QgsWkbTypes,
+    QgsMapLayer,
 )
 
 from qgis.utils import iface
@@ -39,22 +41,36 @@ def get_inputs_from_dialog_service_area(inputs):
     layout = QVBoxLayout()
     dialog.setFixedSize(400, 200)
 
-    label = QLabel("Insert the ID of the stop that you want to analyse:")
+    label = QLabel("Select the points layer to analyse the service area:")
     layout.addWidget(label)
 
-    # create the combo box
-    stop_ids = Database().select_all_stops_id()
-    inputs.stop_id_combo_box = QComboBox()
-    inputs.stop_id_combo_box.addItems([stop_id[0] for stop_id in stop_ids])
-    inputs.stop_id_combo_box.setPlaceholderText("Stop ID")
-    inputs.stop_id_combo_box.setEditable(True)
-    inputs.stop_id_combo_box.setMaxVisibleItems(15)
-    compleater = QCompleter([stop_id[0] for stop_id in stop_ids])
-    compleater.setCaseSensitivity(Qt.CaseInsensitive)
-    inputs.stop_id_combo_box.setCompleter(compleater)
-    layout.addWidget(inputs.stop_id_combo_box)
+    # create combo box
+    layers = QgsProject.instance().mapLayers()
+    vector_layers = []
+    active_vector_layers_names = []
 
-    label = QLabel("Insert the time of the analysis:")
+    for layer in layers.values():
+        if layer.type() == QgsMapLayer.VectorLayer:
+            vector_layers.append(layer)
+
+    for layer in vector_layers:
+        if layer.geometryType() == QgsWkbTypes.PointGeometry:
+            active_vector_layers_names.append(layer.name())
+
+    inputs.points_combo_box = QComboBox()
+    inputs.points_combo_box.addItems(active_vector_layers_names)
+    inputs.points_combo_box.setPlaceholderText("Points Layer")
+    inputs.points_combo_box.setEditable(True)
+    inputs.points_combo_box.setMaxVisibleItems(5)
+
+    # define compleater
+    compleater = QCompleter(active_vector_layers_names)
+    compleater.setCaseSensitivity(Qt.CaseInsensitive)
+
+    inputs.points_combo_box.setCompleter(compleater)
+    layout.addWidget(inputs.points_combo_box)
+
+    label = QLabel("Insert the time of the service area analysis:")
     layout.addWidget(label)
 
     # create the line edit
@@ -91,11 +107,11 @@ def get_inputs_from_dialog_service_area(inputs):
         )
         return get_inputs_from_dialog_service_area()
 
-    stop_info = Database().select_stop_coordinates_by_id(
-        inputs.stop_id_combo_box.currentText()
-    )
-
-    stop_id = inputs.stop_id_combo_box.currentText()
+    points = []
+    layer_name = inputs.points_combo_box.currentText()
+    points_layer = QgsProject.instance().mapLayersByName(layer_name)[0]
+    for feature in points_layer.getFeatures():
+        points.append(feature.geometry().asPoint())
     time = inputs.time_line_edit.text()
 
     # managing errors
@@ -103,7 +119,7 @@ def get_inputs_from_dialog_service_area(inputs):
 
     precise_analysis = inputs.checkbox.isChecked()
 
-    return stop_id, int(time), precise_analysis, stop_info[0]
+    return points, int(time), precise_analysis
 
 
 def handle_service_area_input_errors(time):
@@ -124,31 +140,46 @@ def start_service_area_analysis(
     inputs, starting_dialog: QInputDialog, G: nx.DiGraph, G_walk: nx.MultiDiGraph
 ):
     """Start the service area analysis"""
+    # prendi i punti del layer e calcola il nearest node al grafo per ogni punto, poi per ogni punto calcola il service area
 
     # close the previous dialog
     if starting_dialog:
         starting_dialog.close()
     try:
-        _, time, checkbox, stop_info = get_inputs_from_dialog_service_area(inputs)
-        y_coord, x_coord, _ = stop_info
+        points, time, checkbox = get_inputs_from_dialog_service_area(inputs)
     except TypeError:
         return
 
     crs = QgsProject.instance().crs()
 
-    starting_point = QgsPointXY(x_coord, y_coord)
-    starting_point_geometry = QgsGeometry.fromPointXY(starting_point)
+    service_area_analysis_operations(crs, points, time, checkbox, G, G_walk)
 
-    fields = QgsFields()
-    fields.append(QgsField("ID", QVariant.String))
-    fields.append(QgsField("Stop_name", QVariant.String))
 
-    create_and_load_layer_starting_point(crs, fields, starting_point_geometry)
+def service_area_analysis_operations(
+    crs: QgsCoordinateReferenceSystem,
+    points: list,
+    time: int,
+    checkbox: bool,
+    G: nx.DiGraph,
+    G_walk: nx.MultiDiGraph,
+):
+    """Operations for service area analysis"""
+    nearest_nodes = []
+    for point in points:
+        current_nearest_node = ox.nearest_nodes(G, point[0], point[1])
+        nearest_nodes.append(current_nearest_node)
 
-    nearest_starting_point_node = create_and_load_nearest_starting_point(
-        G, crs, fields, starting_point_geometry
-    )
+    for i, point in enumerate(nearest_nodes, 1):
+        x_coord = G.nodes[point]["x"]
+        y_coord = G.nodes[point]["y"]
 
-    create_and_load_layer_reachable_nodes(
-        G, crs, nearest_starting_point_node, time, G_walk, checkbox
-    )
+        starting_point = QgsPointXY(x_coord, y_coord)
+        starting_point_geometry = QgsGeometry.fromPointXY(starting_point)
+
+        fields = QgsFields()
+        fields.append(QgsField("Lat", QVariant.Double))
+        fields.append(QgsField("Lon", QVariant.Double))
+
+        create_and_load_layer_starting_point(crs, fields, starting_point_geometry, i)
+
+        create_and_load_layer_reachable_nodes(G, crs, point, time, G_walk, checkbox, i)

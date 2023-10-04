@@ -21,29 +21,10 @@
  *                                                                         *
  ***************************************************************************/
 """
-from qgis.PyQt.QtCore import Qt, QSettings, QTranslator, QCoreApplication, QVariant
-from qgis.PyQt.QtGui import QIcon, QCursor, QColor
+from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
+from qgis.PyQt.QtGui import QIcon
+
 from qgis.PyQt.QtWidgets import QAction
-from qgis.core import (
-    QgsProject,
-    QgsVectorLayer,
-    QgsFeature,
-    QgsRectangle,
-    QgsGeometry,
-    QgsPointXY,
-    QgsWkbTypes,
-    QgsFields,
-    QgsField,
-    QgsVectorFileWriter,
-    QgsMarkerSymbol,
-    QgsLineSymbol,
-    QgsSingleSymbolRenderer,
-    QgsFillSymbol,
-    QgsDistanceArea,
-    QgsUnitTypes,
-    QgsSpatialIndex,
-    QgsMapLayer,
-)
 from qgis.utils import iface
 
 from .resources import *
@@ -56,13 +37,9 @@ from .pedestrian_graph import PedestrianGraph
 from .drive_graph import DriveGraph
 from .route_graph import RouteGraph
 from .analysis import Analysis
-from .utils import change_style_layer
 
 from collections import defaultdict
-from itertools import islice
-import networkx as nx
 import osmnx as ox
-import pprint as pp
 import datetime
 
 

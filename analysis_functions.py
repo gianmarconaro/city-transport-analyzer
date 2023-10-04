@@ -35,9 +35,9 @@ def remove_layers(project: QgsProject):
     LAYER_NAME_SELECTED_STOPS = "selected_stops"
     LAYER_NAME_DISCARDED_STOPS = "discarded_stops"
     LAYER_NAME_SHORTEST_PATHS = "shortest_paths"
-    LAYER_NAME_STARTING_POINT = "starting_point"
-    LAYER_NAME_STARTING_POINT_ROUTE = "starting_point_route"
-    LAYER_NAME_SERVICE_AREA = "service_area"
+    LAYER_NAME_STARTING_POINT_STOPS = "starting_point"
+    LAYER_NAME_STARTING_POINT_SERVICE_AREA = "starting_point_"
+    LAYER_NAME_SERVICE_AREA = "service_area_"
 
     # check if the layer is already present. If is present, delete it
     project = QgsProject.instance()
@@ -49,26 +49,41 @@ def remove_layers(project: QgsProject):
         project.removeMapLayer(project.mapLayersByName(LAYER_NAME_DISCARDED_STOPS)[0])
     if project.mapLayersByName(LAYER_NAME_SHORTEST_PATHS):
         project.removeMapLayer(project.mapLayersByName(LAYER_NAME_SHORTEST_PATHS)[0])
-    if project.mapLayersByName(LAYER_NAME_STARTING_POINT):
-        project.removeMapLayer(project.mapLayersByName(LAYER_NAME_STARTING_POINT)[0])
-    if project.mapLayersByName(LAYER_NAME_STARTING_POINT_ROUTE):
+    if project.mapLayersByName(LAYER_NAME_STARTING_POINT_STOPS):
         project.removeMapLayer(
-            project.mapLayersByName(LAYER_NAME_STARTING_POINT_ROUTE)[0]
+            project.mapLayersByName(LAYER_NAME_STARTING_POINT_STOPS)[0]
         )
-    if project.mapLayersByName(LAYER_NAME_SERVICE_AREA):
-        project.removeMapLayer(project.mapLayersByName(LAYER_NAME_SERVICE_AREA)[0])
+
+    i = 1
+    while project.mapLayersByName(LAYER_NAME_SERVICE_AREA + str(i)):
+        project.removeMapLayer(
+            project.mapLayersByName(LAYER_NAME_SERVICE_AREA + str(i))[0]
+        )
+        i += 1
+    i = 1
+    while project.mapLayersByName(LAYER_NAME_STARTING_POINT_SERVICE_AREA + str(i)):
+        project.removeMapLayer(
+            project.mapLayersByName(LAYER_NAME_STARTING_POINT_SERVICE_AREA + str(i))[0]
+        )
+        i += 1
 
 
 def create_and_load_layer_starting_point(
     crs: QgsCoordinateReferenceSystem,
     fields: QgsFields,
     starting_point_geometry: QgsGeometry,
+    i: int,
 ):
     """Create a layer to store the starting point and fill it with the starting point"""
 
-    starting_point_layer = QgsVectorLayer(
-        "Point?crs=" + crs.authid(), "starting_point", "memory"
-    )
+    if i == None:
+        starting_point_layer = QgsVectorLayer(
+            "Point?crs=" + crs.authid(), "starting_stop", "memory"
+        )
+    else:
+        starting_point_layer = QgsVectorLayer(
+            "Point?crs=" + crs.authid(), f"starting_point_{i}", "memory"
+        )
 
     starting_point_layer.dataProvider().addAttributes(fields)
     starting_point_layer.startEditing()
@@ -339,11 +354,9 @@ def create_and_load_layer_reachable_nodes(
     time_limit: int,
     G_walk: nx.Graph,
     checkbox: bool,
+    i: int,
 ):
     """Calculate reachable edges in a time limit"""
-
-    start_time = datetime.datetime.now()
-    print("Starting time: ", start_time)
 
     # define a queue to store the nodes to visit
     queue = deque([(starting_point, 0)])
@@ -370,7 +383,7 @@ def create_and_load_layer_reachable_nodes(
                     visited_edges.add((current_node, end_node))
                     queue.append((end_node, time_elapsed + travel_time))
 
-    load_layer_reachable_edges(G, crs, reachable_edges, G_walk, checkbox)
+    load_layer_reachable_edges(G, crs, reachable_edges, G_walk, checkbox, i)
 
 
 def load_layer_reachable_edges(
@@ -379,6 +392,7 @@ def load_layer_reachable_edges(
     reachable_edges: list,
     G_walk: nx.Graph,
     checkbox: bool,
+    i: int,
 ):
     """Create a layer to store the service area and fill it with the service area"""
 
@@ -387,7 +401,7 @@ def load_layer_reachable_edges(
         return
 
     service_area_layer = QgsVectorLayer(
-        "LineString?crs=" + crs.authid(), "service_area", "memory"
+        "LineString?crs=" + crs.authid(), f"service_area_{i}", "memory"
     )
 
     fields = QgsFields()
@@ -446,3 +460,35 @@ def load_layer_reachable_edges(
 
     project = QgsProject.instance()
     project.addMapLayer(service_area_layer)
+
+
+def create_debug_layer():
+    # define a list with some points, 3 is enough
+    points = [
+        QgsPointXY(9.2071310, 45.4399667),
+        QgsPointXY(9.14345477, 45.47489742),
+        QgsPointXY(9.2010362, 45.5327910),
+    ]
+
+    # create fields
+    fields = QgsFields()
+    fields.append(QgsField("Latitude", QVariant.Double))
+    fields.append(QgsField("Longitude", QVariant.Double))
+
+    # create a layer to store the points
+    points_layer = QgsVectorLayer("Point?crs=EPSG:4326", "debug_points", "memory")
+    points_layer.dataProvider().addAttributes(fields)
+    points_layer.startEditing()
+
+    # create a new feature
+    for point in points:
+        new_feature = QgsFeature(points_layer.fields())
+        new_feature.setGeometry(QgsGeometry.fromPointXY(point))
+        points_layer.addFeature(new_feature)
+
+    points_layer.commitChanges()
+
+    change_style_layer(points_layer, "square", "red", "2", None)
+
+    project = QgsProject.instance()
+    project.addMapLayer(points_layer)

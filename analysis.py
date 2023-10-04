@@ -13,5 +13,8 @@ class Analysis(Inputs):
 
         remove_layers(project)
 
+        # crea e carica il layer di debug
+        create_debug_layer()
+
         # ask the user the analysis type
         self.select_analysis_type()

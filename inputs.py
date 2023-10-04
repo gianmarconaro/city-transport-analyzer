@@ -53,15 +53,23 @@ class Inputs:
         # run the dialog
         result = dialog.exec_()
         if result == QDialog.Accepted:
-            if self.service_area_checkbox.isChecked():
+            if (
+                self.service_area_checkbox.isChecked()
+                and not self.nearby_stops_checkbox.isChecked()
+            ):
                 start_service_area_analysis(self, dialog, *self.load_graphs())
-            if self.nearby_stops_checkbox.isChecked():
+            if (
+                self.nearby_stops_checkbox.isChecked()
+                and not self.service_area_checkbox.isChecked()
+            ):
                 start_nearby_stops_paths_analysis(self, dialog, *self.load_graphs())
-            if self.service_area_checkbox.isChecked() and self.nearby_stops_checkbox.isChecked():
+            if (
+                self.service_area_checkbox.isChecked()
+                and self.nearby_stops_checkbox.isChecked()
+            ):
                 start_multi_analysis(self, dialog, *self.load_graphs())
         else:
-            return 
-
+            return
 
     def load_graphs(self):
         print("Loading graphs...")
