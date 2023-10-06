@@ -25,20 +25,17 @@ from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
 from qgis.PyQt.QtGui import QIcon
 
 from qgis.PyQt.QtWidgets import QAction
-from qgis.utils import iface
 
 from .resources import *
 from .route_tracking_dialog import route_trackingDialog
 import os.path
 
-from .gtfs_db import Database
 from .stops_layer import StopsLayer
 from .pedestrian_graph import PedestrianGraph
 from .drive_graph import DriveGraph
 from .route_graph import RouteGraph
 from .analysis import Analysis
 
-from collections import defaultdict
 import osmnx as ox
 import datetime
 
@@ -191,54 +188,6 @@ class route_tracking(StopsLayer, PedestrianGraph, DriveGraph, RouteGraph, Analys
             self.iface.removePluginMenu(self.tr("&Thesis_Plugin"), action)
             self.iface.removeToolBarIcon(action)
 
-    def get_stops_info(self, selected_stops: list):
-        """Get stops info"""
-
-        # create database object
-        database = Database()
-
-        # create a default dictionary to store the stops info
-        stops_info = defaultdict(dict)
-
-        # iterate over the selected stops
-        for stop in selected_stops:
-            stop_id = stop["ID"]
-            stop_name = stop["Stop_name"]
-
-            key = (stop_id, stop_name)
-
-            # get the stop info from the database
-            stop_info = database.select_information_given_stop_id(stop_id)
-            for row in stop_info:
-                (
-                    trip_id,
-                    arrival_time,
-                    departure_time,
-                    stop_sequence,
-                    route_id,
-                    service_id,
-                    trip_headsign,
-                    route_short_name,
-                    route_long_name,
-                    route_type,
-                ) = row
-                stop_info_query = {
-                    "trip_id": trip_id,
-                    "arrival_time": arrival_time,
-                    "departure_time": departure_time,
-                    "stop_sequence": stop_sequence,
-                    "route_id": route_id,
-                    "service_id": service_id,
-                    "trip_headsign": trip_headsign,
-                    "route_short_name": route_short_name,
-                    "route_long_name": route_long_name,
-                    "route_type": route_type,
-                }
-                stops_info[key] = stop_info_query
-
-        # return the stops info
-        return stops_info
-
     def run(self):
         """Run method that performs all the real work"""
 
@@ -251,27 +200,23 @@ class route_tracking(StopsLayer, PedestrianGraph, DriveGraph, RouteGraph, Analys
         # show the dialog
         self.dlg.show()
         # Run the dialog event loop
-        result = self.dlg.exec_()
+        self.dlg.exec_()
+        result = self.dlg.get_result()
 
-        start_time = datetime.datetime.now()
-        print("Starting time: ", start_time)
+        if result:
+            start_time = datetime.datetime.now()
+            print("Starting time: ", start_time)
 
-        self.create_stops_layer()
-        self.create_pedestrian_layer()
-        self.create_drive_layer()
-        self.create_graph_for_routes()
+            self.create_stops_layer()
+            self.create_pedestrian_layer()
+            self.create_drive_layer()
+            self.create_graph_for_routes()
 
-        self.start_analysis()
+            self.start_analysis()
 
-        # print current time
-        end_time = datetime.datetime.now()
-        print("Ending time: ", end_time)
-        print("Total time: ", end_time - start_time)
+            end_time = datetime.datetime.now()
+            print("Ending time: ", end_time)
+            print("Total time: ", end_time - start_time)
 
         # See if OK was pressed
         print("Finished")
-
-        if result:
-            # Do something useful here - delete the line containing pass and
-            # substitute with your code.
-            pass

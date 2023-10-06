@@ -37,12 +37,14 @@ from qgis.utils import iface
 from pathlib import Path
 
 import shutil
+import zipfile
+import sqlite3
+import csv
 
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'route_tracking_dialog_base.ui'))
-
 
 class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
     def __init__(self, parent=None):
@@ -58,10 +60,12 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
         self.pushButton.clicked.connect(self.on_click)
         self.closeButton.clicked.connect(self.on_click_close)
         self.forwardButton.clicked.connect(self.on_click_forward)
+        self.polygonButton.clicked.connect(self.on_click_polygon)
+
+        self.result = False
 
     # Create a function to open the file dialog and save it in the plugin folder
     def openFileDialog(self):
-
         # Dialog title
         title = "Select GTFS Data"
 
@@ -71,10 +75,10 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
         # Set options
         options = QFileDialog.Options()
         options |= QFileDialog.DontConfirmOverwrite
-        options |= QFileDialog.DontUseNativeDialog
+        # options |= QFileDialog.DontUseNativeDialog
 
         # Set format filters
-        filters = "GTFS Files (*.sqlite)"
+        filters = "GTFS Data (*.zip)"
 
         # Open the dialog
         file_name, _ = QFileDialog.getSaveFileName(self, title, desktop_path,
@@ -85,14 +89,39 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
         else:
             self.close()
 
+    def openFileDialogPolygon(self):
+        # Dialog title
+        title = "Select City Polygons"
+
+        # Starting path
+        desktop_path = os.path.join(Path.home(), "Desktop")
+        
+        # Set options
+        options = QFileDialog.Options()
+        options |= QFileDialog.DontConfirmOverwrite
+        # options |= QFileDialog.DontUseNativeDialog
+
+        # Set format filters
+        filters = "Polygons data (*.txt)"
+
+        # Open the dialog
+        file_name, _ = QFileDialog.getSaveFileName(self, title, desktop_path,
+                                                  filters, options=options)
+
+        if file_name:
+            return file_name
+        else:
+            self.close()    
+
     @pyqtSlot()
     def on_click(self):
         try:
             # Save the file selected by the user
-            file_to_copy = self.openFileDialog()
+            zip_file = self.openFileDialog()
+            self.extract_gtfs_data(zip_file)
 
             # Check if the file is empty close the dialog 
-            while os.stat(file_to_copy).st_size == 0:
+            while os.stat(zip_file).st_size == 0:
                 # Close the file dialog
                 self.close()
                 
@@ -103,13 +132,7 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
                 messageBox.exec_()
 
                 # Open the file dialog again
-                file_to_copy = self.openFileDialog()
-            
-            # Save the file in the QGIS plugin folder
-            shutil.copy(file_to_copy, os.path.join(os.path.dirname(__file__) + '/GTFS_DB/'))
-
-            # Close the entire dialog
-            self.close()
+                zip_file = self.openFileDialog()
 
             iface.messageBar().pushMessage("Success!", "GTFS Data successfully imported!", level=Qgis.Success, duration=5)
 
@@ -128,8 +151,63 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
         self.on_click()
 
     def on_click_close(self):
+        self.result = False
         self.close()
 
     def on_click_forward(self):
-        iface.messageBar().pushMessage("Success!", "GTFS Data already imported!", level=Qgis.Success, duration=5)
+        self.result = True
         self.close()
+
+    def on_click_polygon(self):
+        try:
+            file_name = self.openFileDialogPolygon()
+            shutil.copy(file_name, os.path.join(os.path.dirname(__file__), 'polygons', 'polygons.txt'))
+            print("Polygons successfully imported!")
+            iface.messageBar().pushMessage("Success!", "Polygons successfully imported!", level=Qgis.Success, duration=5)
+        except Exception as e:
+            print(f'Error during the selection of the polygons: {e}')
+            return
+
+    def extract_gtfs_data(self, zip_file):
+        try:
+            print("Extraction and importation of GTFS data...")
+            # CSV file to extract from the ZIP file
+            csv_to_extract = ['shapes.txt', 'stops.txt', 'stop_times.txt', 'trips.txt', 'routes.txt']
+            
+            # temporary directory
+            temp_dir = os.path.join(os.path.dirname(__file__), 'temp_gtfs')
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            # extract the CSV files from the ZIP file to the temporary directory
+            with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+                for file_name in csv_to_extract:
+                    zip_ref.extract(file_name, temp_dir)
+            
+            # create the database
+            db_path = os.path.join(os.path.dirname(__file__), 'GTFS_DB', 'gtfs.db')
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            for file_name in csv_to_extract:
+                with open(os.path.join(temp_dir, file_name), 'r') as file_csv:
+                    reader = csv.reader(file_csv)
+                    header = next(reader)
+                    table_name = file_name.replace('.txt', '')
+                    cursor.execute(f'CREATE TABLE IF NOT EXISTS {table_name} ({", ".join(header)})')
+                    cursor.executemany(f'INSERT INTO {table_name} VALUES ({", ".join(["?"] * len(header))})', reader)
+            
+            conn.commit()
+            conn.close()
+            
+            shutil.rmtree(temp_dir)
+            
+            print("GTFS data successfully imported!")
+
+            return True
+        
+        except Exception as e:
+            print(f'Error during the extraction and importation of GTFS data: {e}')
+            return False
+        
+    def get_result(self):
+        return self.result

@@ -24,7 +24,6 @@ from .utils import change_style_layer, route_type_to_speed
 from collections import defaultdict, deque
 import networkx as nx
 import osmnx as ox
-import datetime
 
 
 def remove_layers(project: QgsProject):
@@ -35,7 +34,7 @@ def remove_layers(project: QgsProject):
     LAYER_NAME_SELECTED_STOPS = "selected_stops"
     LAYER_NAME_DISCARDED_STOPS = "discarded_stops"
     LAYER_NAME_SHORTEST_PATHS = "shortest_paths"
-    LAYER_NAME_STARTING_POINT_STOPS = "starting_point"
+    LAYER_NAME_STARTING_POINT_STOPS = "starting_stop"
     LAYER_NAME_STARTING_POINT_SERVICE_AREA = "starting_point_"
     LAYER_NAME_SERVICE_AREA = "service_area_"
 

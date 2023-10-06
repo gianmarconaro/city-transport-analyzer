@@ -7,7 +7,7 @@ import os
 
 class Database:
     def __init__(self):
-        self._FILE_DB = "GTFS_DB/gtfs_milan.db"
+        self._FILE_DB = "GTFS_DB/gtfs.db"
         self._path = os.path.dirname(os.path.abspath(__file__)) + "/" + self._FILE_DB
         # check if the database exists
         if not os.path.isfile(self._path):

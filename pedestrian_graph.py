@@ -8,12 +8,11 @@ from .utils import change_style_layer
 
 import osmnx as ox
 
-
 class PedestrianGraph:
     def create_pedestrian_layer(self):
         """Create a layer with pedestrian"""
 
-        POLYGON_PATH = self._path + "/polygons/milan_walk.txt"
+        POLYGON_PATH = self._path + "/polygons/polygons.txt"
         GRAPH_PATH_GPKG = self._path + "/graphs/pedestrian_graph.gpkg"
         GRAPH_PATH_GML = self._path + "/graphs/pedestrian_graph.graphml"
         GRAPH_NAME = "pedestrian_graph"

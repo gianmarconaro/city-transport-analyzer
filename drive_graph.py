@@ -13,7 +13,7 @@ class DriveGraph:
     def create_drive_layer(self):
         """Create a layer with drive graph"""
 
-        POLYGON_PATH = self._path + "/polygons/milan_walk.txt"
+        POLYGON_PATH = self._path + "/polygons/polygons.txt"
         GRAPH_PATH_GPKG = self._path + "/graphs/drive_graph.gpkg"
         GRAPH_PATH_GML = self._path + "/graphs/drive_graph.graphml"
         GRAPH_NAME = "drive_graph"
