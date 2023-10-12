@@ -45,6 +45,7 @@ def get_inputs_from_dialog_nearby_stops_paths(inputs):
 
     # create the combo box
     stop_ids = Database().select_all_stops_id()
+    stop_ids.sort(key=lambda x: x[0])
     inputs.stop_id_combo_box = QComboBox()
     inputs.stop_id_combo_box.addItems([stop_id[0] for stop_id in stop_ids])
     inputs.stop_id_combo_box.setPlaceholderText("Stop ID")
@@ -186,7 +187,10 @@ def nearby_stops_paths_analysis_operations(
 
     stops_layer = QgsProject.instance().mapLayersByName("stops")[0]
 
-    y_coord, x_coord, current_stop_name = stop_info
+    str_y_coord, str_x_coord, current_stop_name = stop_info
+    x_coord = float(str_x_coord)
+    y_coord = float(str_y_coord)
+
     starting_point = QgsPointXY(x_coord, y_coord)
     starting_point_geometry = QgsGeometry.fromPointXY(starting_point)
 

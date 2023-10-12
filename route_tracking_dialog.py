@@ -169,6 +169,8 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
             return
 
     def extract_gtfs_data(self, zip_file):
+        if os.path.isfile(os.path.join(os.path.dirname(__file__), 'GTFS_DB', 'gtfs.db')):
+            os.remove(os.path.join(os.path.dirname(__file__), 'GTFS_DB', 'gtfs.db'))
         try:
             print("Extraction and importation of GTFS data...")
             # CSV file to extract from the ZIP file
