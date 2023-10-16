@@ -46,7 +46,6 @@ class StopsLayer:
         fields.append(QgsField("Stop_name", QVariant.String))
         fields.append(QgsField("Lon", QVariant.Double))
         fields.append(QgsField("Lan", QVariant.Double))
-        fields.append(QgsField("Wheelchair_boarding", QVariant.Int))
         # fields.append(QgsField("Transports", QVariant.String)) # the cost is too high
 
         writer = QgsVectorFileWriter(
@@ -58,27 +57,23 @@ class StopsLayer:
 
         for stop in stops:
             # stop information
-            stop_id = stop[0]
-            stop_name = stop[1]
-            lon = stop[3]
-            lat = stop[2]
-            wheelchair_boarding = stop[4]
+            stop_id, stop_name, lat, lon = stop
+            x_coord = float(lon)
+            y_coord = float(lat)
 
-            # select transports passing by the stop
-            # transports = database.select_transports_by_stop_id(stop_id)
-            # transports_list = [transport[0] for transport in transports]
-            # transports_string = ", ".join(transports_list)
-
-            # create a new feature
             feature = QgsFeature()
-            feature.setAttributes([stop_id, stop_name, lon, lat, wheelchair_boarding])
+            feature.setAttributes([stop_id, stop_name, lon, lat])
 
-            # create geometry
-            point = QgsPointXY(stop[3], stop[2])
+            point = QgsPointXY(x_coord, y_coord)
             geometry = QgsGeometry.fromPointXY(point)
             feature.setGeometry(geometry)
 
             writer.addFeature(feature)
+
+        # select transports passing by the stop
+        # transports = database.select_transports_by_stop_id(stop_id)
+        # transports_list = [transport[0] for transport in transports]
+        # transports_string = ", ".join(transports_list)
 
         # takes all the stop id and then make a query to retrieve short name of the transport passing by all the stops id
         # result[0] -> stop_id

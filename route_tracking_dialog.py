@@ -30,7 +30,7 @@ from qgis.PyQt import QtWidgets
 from qgis.PyQt.QtWidgets import QFileDialog
 from qgis.PyQt.QtCore import pyqtSlot
 
-from qgis.core import Qgis
+from qgis.core import Qgis, QgsProject
 
 from qgis.utils import iface
 
@@ -159,6 +159,20 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
         self.close()
 
     def on_click_polygon(self):
+        if os.path.isfile(os.path.join(os.path.dirname(__file__), 'polygons', 'polygons.txt')):
+            os.remove(os.path.join(os.path.dirname(__file__), 'polygons', 'polygons.txt'))
+
+        # delete the drive and pedestrian graphs
+        if os.path.isfile(os.path.join(os.path.dirname(__file__), 'graphs', 'drive_graph.graphml')):
+            os.remove(os.path.join(os.path.dirname(__file__), 'graphs', 'drive_graph.graphml'))
+        if os.path.isfile(os.path.join(os.path.dirname(__file__), 'graphs', 'drive_graph.gpkg')):
+            os.remove(os.path.join(os.path.dirname(__file__), 'graphs', 'drive_graph.gpkg'))
+
+        if os.path.isfile(os.path.join(os.path.dirname(__file__), 'graphs', 'pedestrian_graph.graphml')):
+            os.remove(os.path.join(os.path.dirname(__file__), 'graphs', 'pedestrian_graph.graphml'))
+        if os.path.isfile(os.path.join(os.path.dirname(__file__), 'graphs', 'pedestrian_graph.gpkg')):
+            os.remove(os.path.join(os.path.dirname(__file__), 'graphs', 'pedestrian_graph.gpkg'))        
+
         try:
             file_name = self.openFileDialogPolygon()
             shutil.copy(file_name, os.path.join(os.path.dirname(__file__), 'polygons', 'polygons.txt'))
@@ -169,8 +183,25 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
             return
 
     def extract_gtfs_data(self, zip_file):
+
+        LAYER_NAME_STOPS = "stops"
+
         if os.path.isfile(os.path.join(os.path.dirname(__file__), 'GTFS_DB', 'gtfs.db')):
             os.remove(os.path.join(os.path.dirname(__file__), 'GTFS_DB', 'gtfs.db'))
+
+        project = QgsProject.instance()
+        if project.mapLayersByName(LAYER_NAME_STOPS):
+            project.removeMapLayer(project.mapLayersByName(LAYER_NAME_STOPS)[0])
+        
+        for file in os.listdir(os.path.join(os.path.dirname(__file__), 'shapefiles')):
+            file_path = os.path.join(os.path.join(os.path.dirname(__file__), 'shapefiles'), file)
+            try:
+                if os.path.isfile(file_path):
+                    os.unlink(file_path)
+            except Exception as e:
+                print(f'Error during the removal of the file {file_path}: {e}')
+                return	
+
         try:
             print("Extraction and importation of GTFS data...")
             # CSV file to extract from the ZIP file
@@ -191,6 +222,7 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
             cursor = conn.cursor()
             
             for file_name in csv_to_extract:
+                print(f'Importing {file_name}...')
                 with open(os.path.join(temp_dir, file_name), 'r') as file_csv:
                     reader = csv.reader(file_csv)
                     header = next(reader)

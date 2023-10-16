@@ -77,21 +77,21 @@ class RouteGraph:
 
                 G.add_node(
                     shape[0] + "_" + str(shape[3]),
-                    x=shape[2],
-                    y=shape[1],
+                    x=float(shape[2]),
+                    y=float(shape[1]),
                     is_stop=False,
                 )
             else:
                 G.add_node(
                     shape[0] + "_" + str(shape[3]),
-                    x=shape[2],
-                    y=shape[1],
+                    x=float(shape[2]),
+                    y=float(shape[1]),
                     is_stop=False,
                 )
 
                 # calculate euclidean distance between previous shape and current shape
                 euclidean_distance = ox.distance.great_circle_vec(
-                    prev_shape[2], prev_shape[1], shape[2], shape[1]
+                    float(prev_shape[2]), float(prev_shape[1]), float(shape[2]), float(shape[1])
                 )
 
                 starting_node = prev_shape[0] + "_" + str(prev_shape[3])
@@ -220,8 +220,8 @@ class RouteGraph:
         spatial_index_graph = QgsSpatialIndex()
         sub_spatial_index_graph = QgsSpatialIndex()
         for node, id in zip(G.nodes(), range(len(G.nodes()))):
-            x = G.nodes[node]["x"]
-            y = G.nodes[node]["y"]
+            x = float(G.nodes[node]["x"])
+            y = float(G.nodes[node]["y"])
             point_graph = QgsPointXY(x, y)
             point_to_id_graph[point_graph] = node
 
@@ -232,7 +232,7 @@ class RouteGraph:
             feature_id_graph_to_point[id] = point_graph
 
         for stop in stops:
-            stop_point = QgsPointXY(stop[3], stop[2])
+            stop_point = QgsPointXY(float(stop[3]), float(stop[2]))
 
             # define the dimensions of the bounding box
             x_min = stop_point.x() - STOP_RADIUS
@@ -264,6 +264,7 @@ class RouteGraph:
         """Convert nodes into points"""
 
         print("Converting stop nodes into points...")
+        print(len(G.nodes()), " nodes in the routes graph")
 
         # create a default dictionary to store the nodes with the attribute id
         point_to_id_stop = defaultdict(dict)
@@ -276,8 +277,8 @@ class RouteGraph:
 
         # create a list of points and fill a dictionary with the nodes with the attribute id
         for node, id in zip(G.nodes, range(len(G.nodes))):
-            x = G.nodes[node]["x"]
-            y = G.nodes[node]["y"]
+            x = float(G.nodes[node]["x"])
+            y = float(G.nodes[node]["y"])
             is_stop = G.nodes[node]["is_stop"]
 
             if is_stop == True:
@@ -307,7 +308,6 @@ class RouteGraph:
         print(len(G.nodes()), " nodes in the walk graph")
 
         start_time = datetime.datetime.now()
-        print("Start time: ", start_time)
 
         point_to_id_walk = defaultdict(dict)
         feature_id_walk_to_point = defaultdict(dict)
@@ -316,8 +316,8 @@ class RouteGraph:
         spatial_index_walk = QgsSpatialIndex()
 
         for node, id in zip(G.nodes, range(len(G.nodes))):
-            x = G.nodes[node]["x"]
-            y = G.nodes[node]["y"]
+            x = float(G.nodes[node]["x"])
+            y = float(G.nodes[node]["y"])
             point = QgsPointXY(x, y)
             point_to_id_walk[point] = node
 
@@ -330,7 +330,7 @@ class RouteGraph:
         print("Walk nodes converted into points!")
 
         end_time = datetime.datetime.now()
-        print("End time: ", end_time - start_time)
+        print("Total operation time: ", end_time - start_time)
 
         return point_to_id_walk, spatial_index_walk, feature_id_walk_to_point
 
@@ -454,7 +454,9 @@ class RouteGraph:
                 partial_time = datetime.datetime.now()
                 print("Point ", i, " of ", len(stop_points), " processed")
                 print("Partial time: ", partial_time - start_time)
-
+        
+        end_time = datetime.datetime.now()
+        print("Total operation time: ", end_time - start_time)
         print("Subgraphs merged!")
 
     def get_subgraphs(self, G: nx.MultiDiGraph):
@@ -480,8 +482,8 @@ class RouteGraph:
                 node1 = subG.nodes[edge[0]]
                 node2 = subG.nodes[edge[1]]
 
-                point1 = QgsPointXY(node1["x"], node1["y"])
-                point2 = QgsPointXY(node2["x"], node2["y"])
+                point1 = QgsPointXY(float(node1["x"]), float(node1["y"]))
+                point2 = QgsPointXY(float(node2["x"]), float(node2["y"]))
 
                 feature = QgsFeature()
                 feature.setGeometry(QgsGeometry.fromPolylineXY([point1, point2]))

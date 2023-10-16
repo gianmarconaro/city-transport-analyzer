@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>475</width>
-    <height>306</height>
+    <width>349</width>
+    <height>197</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -38,7 +38,7 @@
    <item row="3" column="0">
     <widget class="QLabel" name="label_5">
      <property name="text">
-      <string>- If you want to import city polygons</string>
+      <string>- Import Polygons: If you want to import city polygons</string>
      </property>
     </widget>
    </item>

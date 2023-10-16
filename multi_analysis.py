@@ -88,6 +88,7 @@ def get_inputs_from_dialog_multi_analysis(inputs):
 
     # create the combo box
     stop_ids = Database().select_all_stops_id()
+    stop_ids.sort(key=lambda x: x[0])
     inputs.stop_id_combo_box = QComboBox()
     inputs.stop_id_combo_box.addItems([stop_id[0] for stop_id in stop_ids])
     inputs.stop_id_combo_box.setPlaceholderText("Stop ID")

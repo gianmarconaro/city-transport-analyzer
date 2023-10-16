@@ -11,7 +11,8 @@ class Database:
         self._path = os.path.dirname(os.path.abspath(__file__)) + "/" + self._FILE_DB
         # check if the database exists
         if not os.path.isfile(self._path):
-            raise Exception("Database not found")
+            print("Database not found")
+            return
 
     def create_connection(self):
         """
@@ -43,9 +44,7 @@ class Database:
         """
         conn = self.create_connection()
         cur = conn.cursor()
-        cur.execute(
-            "SELECT stop_id, stop_name, stop_lat, stop_lon, wheelchair_boarding FROM stops"
-        )
+        cur.execute("SELECT stop_id, stop_name, stop_lat, stop_lon FROM stops")
 
         rows = cur.fetchall()
 

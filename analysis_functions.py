@@ -464,9 +464,11 @@ def load_layer_reachable_edges(
 def create_debug_layer():
     # define a list with some points, 3 is enough
     points = [
-        QgsPointXY(9.2071310, 45.4399667),
-        QgsPointXY(9.14345477, 45.47489742),
-        QgsPointXY(9.2010362, 45.5327910),
+        QgsPointXY(-43.195617, -22.906821),
+        QgsPointXY(-43.3246895, -22.8472869),
+
+        # QgsPointXY(9.2006962, 45.4437618),
+        # QgsPointXY(9.17593961, 45.49690061),
     ]
 
     # create fields
