@@ -26,45 +26,42 @@ import networkx as nx
 import osmnx as ox
 
 
+def remove_layer_after_import_GTFS():
+    LAYER_NAME_STOPS = "stops"
+    LAYER_NAME_ROUTE_GRAPH = "route_graph"
+    project = QgsProject.instance()
+    if project.mapLayersByName(LAYER_NAME_STOPS):
+        project.removeMapLayer(project.mapLayersByName(LAYER_NAME_STOPS)[0])
+    if project.mapLayersByName(LAYER_NAME_ROUTE_GRAPH):
+        project.removeMapLayer(project.mapLayersByName(LAYER_NAME_ROUTE_GRAPH)[0])
+        project.removeMapLayer(project.mapLayersByName(LAYER_NAME_ROUTE_GRAPH)[1])
+
+
+def remove_layers_by_name_pattern(project, name_pattern):
+    i = 1
+    while project.mapLayersByName(name_pattern + str(i)):
+        project.removeMapLayer(project.mapLayersByName(name_pattern + str(i))[0])
+        i += 1
+
+
 def remove_layers(project: QgsProject):
     """Remove layers from the project"""
 
-    # layer names
-    LAYER_NAME_BUFFER = "circular_buffer"
-    LAYER_NAME_SELECTED_STOPS = "selected_stops"
-    LAYER_NAME_DISCARDED_STOPS = "discarded_stops"
-    LAYER_NAME_SHORTEST_PATHS = "shortest_paths"
-    LAYER_NAME_STARTING_POINT_STOPS = "starting_stop"
-    LAYER_NAME_STARTING_POINT_SERVICE_AREA = "starting_point_"
-    LAYER_NAME_SERVICE_AREA = "service_area_"
+    # layer names pattern
+    LAYER_PATTERN = [
+        "circular_buffer_",
+        "selected_stops_",
+        "discarded_stops_",
+        "shortest_paths_",
+        "starting_stop_",
+        "starting_point_",
+        "service_area_",
+    ]
 
     # check if the layer is already present. If is present, delete it
     project = QgsProject.instance()
-    if project.mapLayersByName(LAYER_NAME_SELECTED_STOPS):
-        project.removeMapLayer(project.mapLayersByName(LAYER_NAME_SELECTED_STOPS)[0])
-    if project.mapLayersByName(LAYER_NAME_BUFFER):
-        project.removeMapLayer(project.mapLayersByName(LAYER_NAME_BUFFER)[0])
-    if project.mapLayersByName(LAYER_NAME_DISCARDED_STOPS):
-        project.removeMapLayer(project.mapLayersByName(LAYER_NAME_DISCARDED_STOPS)[0])
-    if project.mapLayersByName(LAYER_NAME_SHORTEST_PATHS):
-        project.removeMapLayer(project.mapLayersByName(LAYER_NAME_SHORTEST_PATHS)[0])
-    if project.mapLayersByName(LAYER_NAME_STARTING_POINT_STOPS):
-        project.removeMapLayer(
-            project.mapLayersByName(LAYER_NAME_STARTING_POINT_STOPS)[0]
-        )
-
-    i = 1
-    while project.mapLayersByName(LAYER_NAME_SERVICE_AREA + str(i)):
-        project.removeMapLayer(
-            project.mapLayersByName(LAYER_NAME_SERVICE_AREA + str(i))[0]
-        )
-        i += 1
-    i = 1
-    while project.mapLayersByName(LAYER_NAME_STARTING_POINT_SERVICE_AREA + str(i)):
-        project.removeMapLayer(
-            project.mapLayersByName(LAYER_NAME_STARTING_POINT_SERVICE_AREA + str(i))[0]
-        )
-        i += 1
+    for layer_pattern in LAYER_PATTERN:
+        remove_layers_by_name_pattern(project, layer_pattern)
 
 
 def create_and_load_layer_starting_point(
@@ -72,12 +69,13 @@ def create_and_load_layer_starting_point(
     fields: QgsFields,
     starting_point_geometry: QgsGeometry,
     i: int,
+    is_stop: bool = False,
 ):
     """Create a layer to store the starting point and fill it with the starting point"""
 
-    if i == None:
+    if is_stop:
         starting_point_layer = QgsVectorLayer(
-            "Point?crs=" + crs.authid(), "starting_stop", "memory"
+            "Point?crs=" + crs.authid(), f"starting_stop_{i}", "memory"
         )
     else:
         starting_point_layer = QgsVectorLayer(
@@ -147,6 +145,7 @@ def create_and_load_layer_circular_buffer(
     starting_point_geometry: QgsGeometry,
     stops_layer: QgsVectorLayer,
     range: int,
+    i: int,
 ):
     """Create a layer to store the circular buffer and fill it with the circular buffer"""
 
@@ -167,7 +166,7 @@ def create_and_load_layer_circular_buffer(
     circular_feature.setGeometry(circular_buffer)
 
     circular_buffer_layer = QgsVectorLayer(
-        "Polygon?crs=" + crs.authid(), "circular_buffer", "memory"
+        "Polygon?crs=" + crs.authid(), f"circular_buffer_{i}", "memory"
     )
     circular_buffer_layer.dataProvider().addFeatures([circular_feature])
 
@@ -194,6 +193,7 @@ def create_and_load_layer_selected_stops(
     circular_buffer: QgsGeometry,
     current_stop_transports_list: list,
     current_stop_id: QgsGeometry,
+    i: int,
 ):
     """Create a layer to store the selected stops and fill it with the selected stops"""
 
@@ -204,10 +204,10 @@ def create_and_load_layer_selected_stops(
     fields.append(QgsField("Transports", QVariant.String))
 
     selected_stops_layer = QgsVectorLayer(
-        "Point?crs=" + crs.authid(), "selected_stops", "memory"
+        "Point?crs=" + crs.authid(), f"selected_stops_{i}", "memory"
     )
     discarded_stops_layer = QgsVectorLayer(
-        "Point?crs=" + crs.authid(), "discarded_stops", "memory"
+        "Point?crs=" + crs.authid(), f"discarded_stops_{i}", "memory"
     )
 
     selected_stops_layer.dataProvider().addAttributes(fields)
@@ -263,7 +263,9 @@ def create_and_load_layer_selected_stops(
     project.addMapLayer(selected_stops_layer)
     project.addMapLayer(discarded_stops_layer)
 
-    print("Starting point transports: ", ", ".join(current_stop_transports_list))
+    print(
+        f"Starting point transports for {i}: ", ", ".join(current_stop_transports_list)
+    )
 
     return selected_stops_dict
 
@@ -273,6 +275,7 @@ def create_and_load_layer_shortest_paths(
     selected_stops_dict: list,
     starting_stop_info: list,
     G_walk: nx.Graph,
+    i: int,
 ):
     """Create a layer to store the shortest paths and fill it with the shortest paths"""
 
@@ -281,7 +284,7 @@ def create_and_load_layer_shortest_paths(
         return
 
     shortest_paths_layer = QgsVectorLayer(
-        "LineString?crs=" + crs.authid(), "shortest_paths", "memory"
+        "LineString?crs=" + crs.authid(), f"shortest_paths_{i}", "memory"
     )
 
     (
@@ -464,11 +467,10 @@ def load_layer_reachable_edges(
 def create_debug_layer():
     # define a list with some points, 3 is enough
     points = [
-        QgsPointXY(-43.195617, -22.906821),
-        QgsPointXY(-43.3246895, -22.8472869),
-
-        # QgsPointXY(9.2006962, 45.4437618),
-        # QgsPointXY(9.17593961, 45.49690061),
+        # QgsPointXY(-43.195617, -22.906821),
+        # QgsPointXY(-43.3246895, -22.8472869),
+        QgsPointXY(9.2006962, 45.4437618),
+        QgsPointXY(9.17593961, 45.49690061),
     ]
 
     # create fields

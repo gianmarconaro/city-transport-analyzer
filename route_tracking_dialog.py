@@ -35,6 +35,7 @@ from qgis.core import Qgis, QgsProject
 from qgis.utils import iface
 
 from pathlib import Path
+from .analysis_functions import remove_layer_after_import_GTFS
 
 import shutil
 import zipfile
@@ -87,7 +88,8 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
         if file_name:
             return file_name
         else:
-            self.close()
+            return
+
 
     def openFileDialogPolygon(self):
         # Dialog title
@@ -111,13 +113,18 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
         if file_name:
             return file_name
         else:
-            self.close()    
+            return
+
 
     @pyqtSlot()
     def on_click(self):
         try:
             # Save the file selected by the user
             zip_file = self.openFileDialog()
+            
+            if not zip_file:
+                return
+            
             self.extract_gtfs_data(zip_file)
 
             # Check if the file is empty close the dialog 
@@ -144,8 +151,8 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
             # messageBox.exec_()
 
         except:
-            self.close()
-            pass
+            return
+
 
     def on_click_retry(self):
         self.on_click()
@@ -155,26 +162,54 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
         self.close()
 
     def on_click_forward(self):
+        # check if the gtfs.db exists
+        if not os.path.isfile(os.path.join(os.path.dirname(__file__), 'GTFS_DB', 'gtfs.db')):
+            # create a message box that inform the user that the gtfs.db doesn't exist
+            messageBox = QtWidgets.QMessageBox(self)
+            messageBox.setWindowTitle("Error!")
+            messageBox.setText("<b>GTFS Data not imported!</b>\nImport the GTFS Data before to continue")
+            messageBox.exec_()
+            return
+        
+        # check if the polygons.txt exists
+        if not os.path.isfile(os.path.join(os.path.dirname(__file__), 'polygons', 'polygons.txt')):
+            # create a message box that inform the user that the polygons.txt doesn't exist
+            messageBox = QtWidgets.QMessageBox(self)
+            messageBox.setWindowTitle("Error!")
+            messageBox.setText("<b>Polygons not imported!</b>\nImport the polygons before to continue")
+            messageBox.exec_()
+            return
+        
         self.result = True
         self.close()
 
     def on_click_polygon(self):
-        if os.path.isfile(os.path.join(os.path.dirname(__file__), 'polygons', 'polygons.txt')):
-            os.remove(os.path.join(os.path.dirname(__file__), 'polygons', 'polygons.txt'))
-
-        # delete the drive and pedestrian graphs
-        if os.path.isfile(os.path.join(os.path.dirname(__file__), 'graphs', 'drive_graph.graphml')):
-            os.remove(os.path.join(os.path.dirname(__file__), 'graphs', 'drive_graph.graphml'))
-        if os.path.isfile(os.path.join(os.path.dirname(__file__), 'graphs', 'drive_graph.gpkg')):
-            os.remove(os.path.join(os.path.dirname(__file__), 'graphs', 'drive_graph.gpkg'))
-
-        if os.path.isfile(os.path.join(os.path.dirname(__file__), 'graphs', 'pedestrian_graph.graphml')):
-            os.remove(os.path.join(os.path.dirname(__file__), 'graphs', 'pedestrian_graph.graphml'))
-        if os.path.isfile(os.path.join(os.path.dirname(__file__), 'graphs', 'pedestrian_graph.gpkg')):
-            os.remove(os.path.join(os.path.dirname(__file__), 'graphs', 'pedestrian_graph.gpkg'))        
+        project = QgsProject.instance()      
 
         try:
             file_name = self.openFileDialogPolygon()
+            # if the result is empty close the dialog
+            if not file_name:
+                return                
+            
+            if os.path.isfile(os.path.join(os.path.dirname(__file__), 'polygons', 'polygons.txt')):
+                os.remove(os.path.join(os.path.dirname(__file__), 'polygons', 'polygons.txt'))
+
+            # delete the drive and pedestrian graphs
+            if project.mapLayersByName("drive_graph"):
+                project.removeMapLayer(project.mapLayersByName("drive_graph")[0])
+            if os.path.isfile(os.path.join(os.path.dirname(__file__), 'graphs', 'drive_graph.graphml')):
+                os.remove(os.path.join(os.path.dirname(__file__), 'graphs', 'drive_graph.graphml'))
+            if os.path.isfile(os.path.join(os.path.dirname(__file__), 'graphs', 'drive_graph.gpkg')):
+                os.remove(os.path.join(os.path.dirname(__file__), 'graphs', 'drive_graph.gpkg'))
+
+            if project.mapLayersByName("pedestrian_graph"):
+                project.removeMapLayer(project.mapLayersByName("pedestrian_graph")[0])
+            if os.path.isfile(os.path.join(os.path.dirname(__file__), 'graphs', 'pedestrian_graph.graphml')):
+                os.remove(os.path.join(os.path.dirname(__file__), 'graphs', 'pedestrian_graph.graphml'))
+            if os.path.isfile(os.path.join(os.path.dirname(__file__), 'graphs', 'pedestrian_graph.gpkg')):
+                os.remove(os.path.join(os.path.dirname(__file__), 'graphs', 'pedestrian_graph.gpkg')) 
+
             shutil.copy(file_name, os.path.join(os.path.dirname(__file__), 'polygons', 'polygons.txt'))
             print("Polygons successfully imported!")
             iface.messageBar().pushMessage("Success!", "Polygons successfully imported!", level=Qgis.Success, duration=5)
@@ -182,28 +217,31 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
             print(f'Error during the selection of the polygons: {e}')
             return
 
-    def extract_gtfs_data(self, zip_file):
-
-        LAYER_NAME_STOPS = "stops"
-
-        if os.path.isfile(os.path.join(os.path.dirname(__file__), 'GTFS_DB', 'gtfs.db')):
-            os.remove(os.path.join(os.path.dirname(__file__), 'GTFS_DB', 'gtfs.db'))
-
-        project = QgsProject.instance()
-        if project.mapLayersByName(LAYER_NAME_STOPS):
-            project.removeMapLayer(project.mapLayersByName(LAYER_NAME_STOPS)[0])
-        
-        for file in os.listdir(os.path.join(os.path.dirname(__file__), 'shapefiles')):
-            file_path = os.path.join(os.path.join(os.path.dirname(__file__), 'shapefiles'), file)
-            try:
-                if os.path.isfile(file_path):
-                    os.unlink(file_path)
-            except Exception as e:
-                print(f'Error during the removal of the file {file_path}: {e}')
-                return	
-
+    def extract_gtfs_data(self, zip_file):        
         try:
             print("Extraction and importation of GTFS data...")
+
+            # remove db
+            if os.path.isfile(os.path.join(os.path.dirname(__file__), 'GTFS_DB', 'gtfs.db')):
+                os.remove(os.path.join(os.path.dirname(__file__), 'GTFS_DB', 'gtfs.db'))
+
+            remove_layer_after_import_GTFS()
+
+            for file in os.listdir(os.path.join(os.path.dirname(__file__), 'shapefiles')):
+                file_path = os.path.join(os.path.join(os.path.dirname(__file__), 'shapefiles'), file)
+                try:
+                    if os.path.isfile(file_path):
+                        os.unlink(file_path)
+                except Exception as e:
+                    print(f'Error during the removal of the file {file_path}: {e}')
+                    return	
+
+            # remove route_graph from folder
+            if os.path.isfile(os.path.join(os.path.dirname(__file__), 'graphs', 'route_graph.graphml')):
+                os.remove(os.path.join(os.path.dirname(__file__), 'graphs', 'route_graph.graphml')) 
+            if os.path.isfile(os.path.join(os.path.dirname(__file__), 'graphs', 'route_graph.gpkg')):
+                os.remove(os.path.join(os.path.dirname(__file__), 'graphs', 'route_graph.gpkg'))
+
             # CSV file to extract from the ZIP file
             csv_to_extract = ['shapes.txt', 'stops.txt', 'stop_times.txt', 'trips.txt', 'routes.txt']
             

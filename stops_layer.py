@@ -22,6 +22,9 @@ class StopsLayer:
     def create_stops_layer(self):
         """Create a layer with stops"""
 
+        if not os.path.exists(self._path + "/shapefiles"):
+            os.makedirs(self._path + "/shapefiles")
+
         STOPS_LAYER_PATH = self._path + "/shapefiles/stops.shp"
         STOPS_LAYER_NAME = "stops"
 

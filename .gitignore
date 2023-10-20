@@ -2,7 +2,7 @@ GTFS_DB/
 graphs/
 shapefiles/
 polygons/
-intersections.txt
+intersections/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

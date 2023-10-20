@@ -25,9 +25,7 @@ from qgis.utils import iface
 from qgis.core import Qgis
 
 from .resources import *
-
 from .analysis_functions import *
-from .gtfs_db import Database
 
 import networkx as nx
 

@@ -113,6 +113,10 @@ class RouteGraph:
 
         # import and save it as a GeoPackage and as GraphML file
         print("Saving graph as GRAPHML and GeoPackage file...")
+
+        if not os.path.exists(self._path + "/graphs"):
+            os.makedirs(self._path + "/graphs")
+
         # ox.save_graphml(G, filepath=graph_path_gml)
         nx.write_graphml(G, GRAPH_PATH_GML)
         print("Graph saved as GRAPHML file!")
