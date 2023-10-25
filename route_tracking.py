@@ -204,19 +204,20 @@ class route_tracking(StopsLayer, PedestrianGraph, DriveGraph, RouteGraph, Analys
         result = self.dlg.get_result()
 
         if result:
+            self.dlg.set_result(False)
             start_time = datetime.datetime.now()
-            print("Starting time: ", start_time)
 
             self.create_stops_layer()
             self.create_pedestrian_layer()
             self.create_drive_layer()
             self.create_graph_for_routes()
-
-            self.start_analysis()
-
             end_time = datetime.datetime.now()
-            print("Ending time: ", end_time)
-            print("Total time: ", end_time - start_time)
+            print("Total time preparing data: ", end_time - start_time)
+
+            start_time = datetime.datetime.now()
+            self.start_analysis()
+            end_time = datetime.datetime.now()
+            print("Total time analysis: ", end_time - start_time)
 
         # See if OK was pressed
-        print("Finished")
+        print("Process terminated")

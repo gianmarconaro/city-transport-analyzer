@@ -22,25 +22,25 @@
  ***************************************************************************/
 """
 
-import os
-
 from qgis.PyQt import uic
 from qgis.PyQt import QtWidgets
 
-from qgis.PyQt.QtWidgets import QFileDialog
-from qgis.PyQt.QtCore import pyqtSlot
+from qgis.PyQt.QtWidgets import QFileDialog, QProgressDialog
+from qgis.PyQt.QtCore import pyqtSlot, QTimer, Qt
 
-from qgis.core import Qgis
+from qgis.core import Qgis, QgsApplication
 
 from qgis.utils import iface
 
 from pathlib import Path
 from .data_manager import *
 
+import os
 import shutil
 import zipfile
 import sqlite3
 import csv
+import time
 
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
@@ -88,7 +88,7 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
             return
 
     def openFileDialogPolygon(self):
-        title = "Select City Polygons"
+        title = "Select Region Polygons"
 
         desktop_path = os.path.join(Path.home(), "Desktop")
 
@@ -108,8 +108,30 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
         else:
             return
 
-    def openImportExportGraphDialog(self):
-        title = "Select Graph Folder"
+    def openExportGraphDialog(self):
+        title = "Save Graphs"
+
+        desktop_path = os.path.join(Path.home(), "Desktop")
+
+        options = QFileDialog.Options()
+        options |= QFileDialog.DontConfirmOverwrite
+        # options |= QFileDialog.DontUseNativeDialog
+
+        # Open the dialog
+        folder_path, _ = QFileDialog.getSaveFileName(
+            self,
+            title,
+            desktop_path,
+            options=options,
+        )
+
+        if folder_path:
+            return folder_path
+        else:
+            return
+
+    def openImportGraphDialog(self):
+        title = "Import Graphs"
 
         desktop_path = os.path.join(Path.home(), "Desktop")
 
@@ -119,7 +141,10 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
 
         # Open the dialog
         folder_path = QFileDialog.getExistingDirectory(
-            self, title, desktop_path, options=options
+            self,
+            title,
+            desktop_path,
+            options=options,
         )
 
         if folder_path:
@@ -180,18 +205,20 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
             messageBox.exec_()
             return
 
-        # check if the polygons.txt exists
-        if not os.path.isfile(
-            os.path.join(os.path.dirname(__file__), "polygons", "polygons.txt")
-        ):
-            # create a message box that inform the user that the polygons.txt doesn't exist
-            messageBox = QtWidgets.QMessageBox(self)
-            messageBox.setWindowTitle("Error!")
-            messageBox.setText(
-                "<b>Polygons not imported!</b>\nImport the polygons before to continue"
-            )
-            messageBox.exec_()
-            return
+        # i want the polygon file only if graphs are not already created
+        if not os.path.exists(os.path.join(os.path.dirname(__file__), "graphs")):
+            # check if the polygons.txt exists
+            if not os.path.isfile(
+                os.path.join(os.path.dirname(__file__), "polygons", "polygons.txt")
+            ):
+                # create a message box that inform the user that the polygons.txt doesn't exist
+                messageBox = QtWidgets.QMessageBox(self)
+                messageBox.setWindowTitle("Error!")
+                messageBox.setText(
+                    "<b>Polygons not imported!</b>\nImport the polygons before to continue"
+                )
+                messageBox.exec_()
+                return
 
         self.result = True
         self.close()
@@ -247,6 +274,19 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
                 "routes.txt",
             ]
 
+            files_number = len(csv_to_extract)
+
+            # Initialize progress bar
+            progress_dialog = QProgressDialog(self)
+            progress_dialog.setWindowTitle("Importing GTFS Data")
+            progress_dialog.setLabelText("Importing GTFS data...")
+            progress_dialog.setCancelButton(
+                None
+            )  # Rimuove il pulsante di cancellazione
+            progress_dialog.setMinimumDuration(0)
+            progress_dialog.setWindowModality(2)  # Finestra modale
+            progress_dialog.setMaximum(files_number)
+
             # temporary directory
             temp_dir = os.path.join(os.path.dirname(__file__), "temp_gtfs")
             os.makedirs(temp_dir, exist_ok=True)
@@ -265,8 +305,13 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
 
-            for file_name in csv_to_extract:
+            progress_dialog.show()
+
+            for index, file_name in enumerate(csv_to_extract, 1):
                 print(f"Importing {file_name}...")
+                progress_dialog.setValue(index)
+                QgsApplication.processEvents()
+
                 with open(os.path.join(temp_dir, file_name), "r") as file_csv:
                     reader = csv.reader(file_csv)
                     header = next(reader)
@@ -301,7 +346,7 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
     def on_click_export_graph_folder(self):
         # permit to the user to select a folder where to save the graph folder and then save the folder graphs (is in the plugin folder) in the selected folder
         try:
-            folder_path = self.openImportExportGraphDialog()
+            folder_path = self.openExportGraphDialog()
             if folder_path is None:
                 return
 
@@ -317,8 +362,16 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
                 messageBox.exec_()
                 return
 
-            # now copy the folder graphs in the selected folder
-            shutil.copytree(graphs_folder_path, os.path.join(folder_path, "graphs"))
+            # create the folder in the selected path
+            if not os.path.exists(folder_path):
+                os.makedirs(folder_path)
+
+            # copy what is inside the folder graphs in the selected folder
+            for file_name in os.listdir(graphs_folder_path):
+                shutil.copyfile(
+                    os.path.join(graphs_folder_path, file_name),
+                    os.path.join(folder_path, file_name),
+                )
 
             print("Graphs successfully exported!")
             iface.messageBar().pushMessage(
@@ -334,7 +387,7 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
     def on_click_import_graph_folder(self):
         """permit the user to select a folder where there is the graph folder and then copy the graph folder in the plugin folder"""
         try:
-            folder_path = self.openImportExportGraphDialog()
+            folder_path = self.openImportGraphDialog()
             if folder_path is None:
                 return
 
@@ -373,13 +426,19 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
         )
         messageBox.setDefaultButton(QtWidgets.QMessageBox.No)
         messageBox.setIcon(QtWidgets.QMessageBox.Warning)
-        messageBox.buttonClicked.connect(self.delete_all_data)
+        # if presse yes, delete all data
         messageBox.exec_()
-        return
+        if messageBox.result() == QtWidgets.QMessageBox.Yes:
+            self.delete_all_data()
+        else:
+            return
 
     def delete_all_data(self):
         print("Deleting all data...")
         remove_all_project_layers()
+        QTimer.singleShot(1000, self.delete_all_data_after_delay)
+
+    def delete_all_data_after_delay(self):
         delete_all_project_folders()
 
         print("All data successfully deleted!")
@@ -392,3 +451,6 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
 
     def get_result(self):
         return self.result
+
+    def set_result(self, result):
+        self.result = result

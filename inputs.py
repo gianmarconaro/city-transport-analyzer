@@ -2,8 +2,11 @@ from qgis.PyQt.QtWidgets import (
     QDialog,
     QVBoxLayout,
     QLabel,
-    QPushButton,
+    QProgressBar,
+    QProgressDialog,
 )
+
+from qgis.core import QgsApplication
 
 from .resources import *
 
@@ -73,13 +76,34 @@ class Inputs:
 
     def load_graphs(self):
         print("Loading graphs...")
+        # create a progressive bar
+        self.progress_dialog = QProgressDialog(
+            iface.mainWindow()
+        )
+        self.progress_dialog.setWindowTitle("Loading Graphs")
+        self.progress_dialog.setLabelText("Loading graphs...")
+        self.progress_dialog.setCancelButton(None)
+        self.progress_dialog.setMinimumDuration(0)
+        self.progress_dialog.setWindowModality(2)  # Finestra modale
+
+        self.progress_bar = QProgressBar(self.progress_dialog)
+        self.progress_bar.setMinimum(0)
+        self.progress_bar.setMaximum(100)
+
+        self.progress_dialog.setBar(self.progress_bar)
 
         global G, G_WALK
 
         GRAPH_PATH_GML_WALK = self._path + "/graphs/pedestrian_graph.graphml"
         GRAPH_PATH_GML_ROUTE = self._path + "/graphs/routes_graph.graphml"
 
-        G_WALK = G_WALK or ox.load_graphml(
+        self.progress_dialog.show()
+
+        for i in range(51):
+            self.progress_bar.setValue(i)
+            QgsApplication.processEvents()
+
+            G_WALK = G_WALK or ox.load_graphml(
             GRAPH_PATH_GML_WALK,
             node_dtypes={"fid": int, "osmid": str, "x": float, "y": float},
             edge_dtypes={
@@ -93,8 +117,11 @@ class Inputs:
                 "to": str,
             },
         )
-
-        G = G or nx.read_graphml(GRAPH_PATH_GML_ROUTE)
+            
+        for i in range(51, 101):
+            self.progress_bar.setValue(i*2)
+            G = G or nx.read_graphml(GRAPH_PATH_GML_ROUTE)
 
         print("Graphs loaded")
+        self.progress_dialog.close()
         return G, G_WALK

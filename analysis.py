@@ -1,5 +1,3 @@
-from qgis.core import QgsProject
-
 from .resources import *
 
 from .analysis_functions import *

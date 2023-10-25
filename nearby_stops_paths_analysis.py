@@ -26,7 +26,6 @@ from .analysis_functions import *
 
 from collections import defaultdict
 import networkx as nx
-import osmnx as ox
 import os
 
 

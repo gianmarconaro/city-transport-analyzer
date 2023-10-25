@@ -13,7 +13,6 @@ from qgis.PyQt.QtWidgets import (
 )
 from qgis.core import (
     QgsProject,
-    QgsGeometry,
     QgsWkbTypes,
     QgsMapLayer,
     Qgis,
