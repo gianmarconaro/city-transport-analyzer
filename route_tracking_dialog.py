@@ -30,12 +30,12 @@ from qgis.PyQt import QtWidgets
 from qgis.PyQt.QtWidgets import QFileDialog
 from qgis.PyQt.QtCore import pyqtSlot
 
-from qgis.core import Qgis, QgsProject
+from qgis.core import Qgis
 
 from qgis.utils import iface
 
 from pathlib import Path
-from .analysis_functions import remove_layer_after_import_GTFS
+from .data_manager import *
 
 import shutil
 import zipfile
@@ -44,118 +44,123 @@ import csv
 
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
-FORM_CLASS, _ = uic.loadUiType(os.path.join(
-    os.path.dirname(__file__), 'route_tracking_dialog_base.ui'))
+FORM_CLASS, _ = uic.loadUiType(
+    os.path.join(os.path.dirname(__file__), "route_tracking_dialog_base.ui")
+)
+
 
 class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
     def __init__(self, parent=None):
         """Constructor."""
         super(route_trackingDialog, self).__init__(parent)
-        # Set up the user interface from Designer through FORM_CLASS.
-        # After self.setupUi() you can access any designer object by doing
-        # self.<objectname>, and you can use autoconnect slots - see
-        # http://qt-project.org/doc/qt-4.8/designer-using-a-ui-file.html
-        # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
 
-        self.pushButton.clicked.connect(self.on_click)
+        self.GTFSButton.clicked.connect(self.on_click_import_GTFS)
         self.closeButton.clicked.connect(self.on_click_close)
         self.forwardButton.clicked.connect(self.on_click_forward)
         self.polygonButton.clicked.connect(self.on_click_polygon)
+        self.exportButton.clicked.connect(self.on_click_export_graph_folder)
+        self.importButton.clicked.connect(self.on_click_import_graph_folder)
+        self.deleteButton.clicked.connect(self.on_click_delete_all_data)
 
         self.result = False
 
     # Create a function to open the file dialog and save it in the plugin folder
     def openFileDialog(self):
-        # Dialog title
         title = "Select GTFS Data"
 
-        # Starting path
         desktop_path = os.path.join(Path.home(), "Desktop")
-        
-        # Set options
+
         options = QFileDialog.Options()
         options |= QFileDialog.DontConfirmOverwrite
         # options |= QFileDialog.DontUseNativeDialog
 
-        # Set format filters
         filters = "GTFS Data (*.zip)"
 
         # Open the dialog
-        file_name, _ = QFileDialog.getSaveFileName(self, title, desktop_path,
-                                                  filters, options=options)
+        file_name, _ = QFileDialog.getSaveFileName(
+            self, title, desktop_path, filters, options=options
+        )
 
         if file_name:
             return file_name
         else:
             return
 
-
     def openFileDialogPolygon(self):
-        # Dialog title
         title = "Select City Polygons"
 
-        # Starting path
         desktop_path = os.path.join(Path.home(), "Desktop")
-        
-        # Set options
+
         options = QFileDialog.Options()
         options |= QFileDialog.DontConfirmOverwrite
         # options |= QFileDialog.DontUseNativeDialog
 
-        # Set format filters
         filters = "Polygons data (*.txt)"
 
         # Open the dialog
-        file_name, _ = QFileDialog.getSaveFileName(self, title, desktop_path,
-                                                  filters, options=options)
+        file_name, _ = QFileDialog.getSaveFileName(
+            self, title, desktop_path, filters, options=options
+        )
 
         if file_name:
             return file_name
         else:
             return
 
+    def openImportExportGraphDialog(self):
+        title = "Select Graph Folder"
+
+        desktop_path = os.path.join(Path.home(), "Desktop")
+
+        options = QFileDialog.Options()
+        options |= QFileDialog.DontConfirmOverwrite
+        # options |= QFileDialog.DontUseNativeDialog
+
+        # Open the dialog
+        folder_path = QFileDialog.getExistingDirectory(
+            self, title, desktop_path, options=options
+        )
+
+        if folder_path:
+            return folder_path
+        else:
+            return
 
     @pyqtSlot()
-    def on_click(self):
+    def on_click_import_GTFS(self):
         try:
             # Save the file selected by the user
             zip_file = self.openFileDialog()
-            
             if not zip_file:
                 return
-            
+
+            remove_stops_layer()
+            delete_shapefiles_folder()
+
             self.extract_gtfs_data(zip_file)
 
-            # Check if the file is empty close the dialog 
+            # Check if the file is empty and close the dialog
             while os.stat(zip_file).st_size == 0:
-                # Close the file dialog
                 self.close()
-                
+
                 # Create a message box to inform the user that the file is empty
                 messageBox = QtWidgets.QMessageBox(self)
                 messageBox.setWindowTitle("Error!")
                 messageBox.setText("<b>The file is empty!</b>\nTry with another file")
                 messageBox.exec_()
 
-                # Open the file dialog again
                 zip_file = self.openFileDialog()
 
-            iface.messageBar().pushMessage("Success!", "GTFS Data successfully imported!", level=Qgis.Success, duration=5)
-
-            # Alternative way
-            # Create a message box to inform the user that the file has been imported
-            # messageBox = QtWidgets.QMessageBox(self)
-            # messageBox.setWindowTitle("Success!")
-            # messageBox.setText("GTFS Data successfully imported!")
-            # messageBox.exec_()
+            iface.messageBar().pushMessage(
+                "Success!",
+                "GTFS Data successfully imported!",
+                level=Qgis.Success,
+                duration=5,
+            )
 
         except:
             return
-
-
-    def on_click_retry(self):
-        self.on_click()
 
     def on_click_close(self):
         self.result = False
@@ -163,123 +168,227 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
 
     def on_click_forward(self):
         # check if the gtfs.db exists
-        if not os.path.isfile(os.path.join(os.path.dirname(__file__), 'GTFS_DB', 'gtfs.db')):
+        if not os.path.isfile(
+            os.path.join(os.path.dirname(__file__), "GTFS_DB", "gtfs.db")
+        ):
             # create a message box that inform the user that the gtfs.db doesn't exist
             messageBox = QtWidgets.QMessageBox(self)
             messageBox.setWindowTitle("Error!")
-            messageBox.setText("<b>GTFS Data not imported!</b>\nImport the GTFS Data before to continue")
+            messageBox.setText(
+                "<b>GTFS Data not imported!</b>\nImport the GTFS Data before to continue"
+            )
             messageBox.exec_()
             return
-        
+
         # check if the polygons.txt exists
-        if not os.path.isfile(os.path.join(os.path.dirname(__file__), 'polygons', 'polygons.txt')):
+        if not os.path.isfile(
+            os.path.join(os.path.dirname(__file__), "polygons", "polygons.txt")
+        ):
             # create a message box that inform the user that the polygons.txt doesn't exist
             messageBox = QtWidgets.QMessageBox(self)
             messageBox.setWindowTitle("Error!")
-            messageBox.setText("<b>Polygons not imported!</b>\nImport the polygons before to continue")
+            messageBox.setText(
+                "<b>Polygons not imported!</b>\nImport the polygons before to continue"
+            )
             messageBox.exec_()
             return
-        
+
         self.result = True
         self.close()
 
     def on_click_polygon(self):
-        project = QgsProject.instance()      
-
         try:
             file_name = self.openFileDialogPolygon()
-            # if the result is empty close the dialog
-            if not file_name:
-                return                
-            
-            if os.path.isfile(os.path.join(os.path.dirname(__file__), 'polygons', 'polygons.txt')):
-                os.remove(os.path.join(os.path.dirname(__file__), 'polygons', 'polygons.txt'))
+            if file_name is None:
+                return
 
-            # delete the drive and pedestrian graphs
-            if project.mapLayersByName("drive_graph"):
-                project.removeMapLayer(project.mapLayersByName("drive_graph")[0])
-            if os.path.isfile(os.path.join(os.path.dirname(__file__), 'graphs', 'drive_graph.graphml')):
-                os.remove(os.path.join(os.path.dirname(__file__), 'graphs', 'drive_graph.graphml'))
-            if os.path.isfile(os.path.join(os.path.dirname(__file__), 'graphs', 'drive_graph.gpkg')):
-                os.remove(os.path.join(os.path.dirname(__file__), 'graphs', 'drive_graph.gpkg'))
+            # check if the folder polygons exists. If exists, delete the file polygons.txt
+            polygons_folder_path = os.path.join(os.path.dirname(__file__), "polygons")
+            if os.path.exists(polygons_folder_path):
+                polygons_path = os.path.join(polygons_folder_path, "polygons.txt")
+                if os.path.isfile(polygons_path):
+                    os.remove(polygons_path)
 
-            if project.mapLayersByName("pedestrian_graph"):
-                project.removeMapLayer(project.mapLayersByName("pedestrian_graph")[0])
-            if os.path.isfile(os.path.join(os.path.dirname(__file__), 'graphs', 'pedestrian_graph.graphml')):
-                os.remove(os.path.join(os.path.dirname(__file__), 'graphs', 'pedestrian_graph.graphml'))
-            if os.path.isfile(os.path.join(os.path.dirname(__file__), 'graphs', 'pedestrian_graph.gpkg')):
-                os.remove(os.path.join(os.path.dirname(__file__), 'graphs', 'pedestrian_graph.gpkg')) 
+            # now create the folder polygons if it doesn't exist
+            if not os.path.exists(polygons_folder_path):
+                os.makedirs(polygons_folder_path)
 
-            shutil.copy(file_name, os.path.join(os.path.dirname(__file__), 'polygons', 'polygons.txt'))
+            polygons_path = os.path.join(polygons_folder_path, "polygons.txt")
+            shutil.copyfile(file_name, polygons_path)
+
             print("Polygons successfully imported!")
-            iface.messageBar().pushMessage("Success!", "Polygons successfully imported!", level=Qgis.Success, duration=5)
+            iface.messageBar().pushMessage(
+                "Success!",
+                "Polygons successfully imported!",
+                level=Qgis.Success,
+                duration=5,
+            )
         except Exception as e:
-            print(f'Error during the selection of the polygons: {e}')
+            print(f"Error during the selection of the polygons: {e}")
             return
 
-    def extract_gtfs_data(self, zip_file):        
+    def extract_gtfs_data(self, zip_file):
         try:
             print("Extraction and importation of GTFS data...")
 
-            # remove db
-            if os.path.isfile(os.path.join(os.path.dirname(__file__), 'GTFS_DB', 'gtfs.db')):
-                os.remove(os.path.join(os.path.dirname(__file__), 'GTFS_DB', 'gtfs.db'))
-
-            remove_layer_after_import_GTFS()
-
-            for file in os.listdir(os.path.join(os.path.dirname(__file__), 'shapefiles')):
-                file_path = os.path.join(os.path.join(os.path.dirname(__file__), 'shapefiles'), file)
-                try:
-                    if os.path.isfile(file_path):
-                        os.unlink(file_path)
-                except Exception as e:
-                    print(f'Error during the removal of the file {file_path}: {e}')
-                    return	
-
-            # remove route_graph from folder
-            if os.path.isfile(os.path.join(os.path.dirname(__file__), 'graphs', 'route_graph.graphml')):
-                os.remove(os.path.join(os.path.dirname(__file__), 'graphs', 'route_graph.graphml')) 
-            if os.path.isfile(os.path.join(os.path.dirname(__file__), 'graphs', 'route_graph.gpkg')):
-                os.remove(os.path.join(os.path.dirname(__file__), 'graphs', 'route_graph.gpkg'))
+            # remove existing db
+            db_folder_path = os.path.join(os.path.dirname(__file__), "GTFS_DB")
+            if os.path.exists(db_folder_path):
+                db_path = os.path.join(db_folder_path, "gtfs.db")
+                if os.path.isfile(db_path):
+                    os.remove(db_path)
 
             # CSV file to extract from the ZIP file
-            csv_to_extract = ['shapes.txt', 'stops.txt', 'stop_times.txt', 'trips.txt', 'routes.txt']
-            
+            csv_to_extract = [
+                "shapes.txt",
+                "stops.txt",
+                "stop_times.txt",
+                "trips.txt",
+                "routes.txt",
+            ]
+
             # temporary directory
-            temp_dir = os.path.join(os.path.dirname(__file__), 'temp_gtfs')
+            temp_dir = os.path.join(os.path.dirname(__file__), "temp_gtfs")
             os.makedirs(temp_dir, exist_ok=True)
-            
+
             # extract the CSV files from the ZIP file to the temporary directory
-            with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+            with zipfile.ZipFile(zip_file, "r") as zip_ref:
                 for file_name in csv_to_extract:
                     zip_ref.extract(file_name, temp_dir)
-            
-            # create the database
-            db_path = os.path.join(os.path.dirname(__file__), 'GTFS_DB', 'gtfs.db')
+
+            # create the database folder
+            if not os.path.exists(db_folder_path):
+                os.makedirs(db_folder_path)
+            db_path = os.path.join(db_folder_path, "gtfs.db")
+
+            # import the CSV files into the database
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
-            
+
             for file_name in csv_to_extract:
-                print(f'Importing {file_name}...')
-                with open(os.path.join(temp_dir, file_name), 'r') as file_csv:
+                print(f"Importing {file_name}...")
+                with open(os.path.join(temp_dir, file_name), "r") as file_csv:
                     reader = csv.reader(file_csv)
                     header = next(reader)
-                    table_name = file_name.replace('.txt', '')
-                    cursor.execute(f'CREATE TABLE IF NOT EXISTS {table_name} ({", ".join(header)})')
-                    cursor.executemany(f'INSERT INTO {table_name} VALUES ({", ".join(["?"] * len(header))})', reader)
-            
+                    table_name = file_name.replace(".txt", "")
+                    cursor.execute(
+                        f'CREATE TABLE IF NOT EXISTS {table_name} ({", ".join(header)})'
+                    )
+                    cursor.executemany(
+                        f'INSERT INTO {table_name} VALUES ({", ".join(["?"] * len(header))})',
+                        reader,
+                    )
+
             conn.commit()
             conn.close()
-            
+
             shutil.rmtree(temp_dir)
-            
+
             print("GTFS data successfully imported!")
+            iface.messageBar().pushMessage(
+                "Success!",
+                "GTFS Data successfully imported!",
+                level=Qgis.Success,
+                duration=5,
+            )
 
             return True
-        
+
         except Exception as e:
-            print(f'Error during the extraction and importation of GTFS data: {e}')
+            print(f"Error during the extraction and importation of GTFS data: {e}")
             return False
-        
+
+    def on_click_export_graph_folder(self):
+        # permit to the user to select a folder where to save the graph folder and then save the folder graphs (is in the plugin folder) in the selected folder
+        try:
+            folder_path = self.openImportExportGraphDialog()
+            if folder_path is None:
+                return
+
+            # firsly check if the folder graphs exists in the plugin folder
+            graphs_folder_path = os.path.join(os.path.dirname(__file__), "graphs")
+            if not os.path.exists(graphs_folder_path):
+                # create a message box that inform the user that the folder graphs doesn't exist
+                messageBox = QtWidgets.QMessageBox(self)
+                messageBox.setWindowTitle("Error!")
+                messageBox.setText(
+                    "<b>Graphs not exported!</b>\nCreate the graphs before export them"
+                )
+                messageBox.exec_()
+                return
+
+            # now copy the folder graphs in the selected folder
+            shutil.copytree(graphs_folder_path, os.path.join(folder_path, "graphs"))
+
+            print("Graphs successfully exported!")
+            iface.messageBar().pushMessage(
+                "Success!",
+                "Graphs successfully exported!",
+                level=Qgis.Success,
+                duration=5,
+            )
+        except Exception as e:
+            print(f"Error during the exportation of the graphs: {e}")
+            return
+
+    def on_click_import_graph_folder(self):
+        """permit the user to select a folder where there is the graph folder and then copy the graph folder in the plugin folder"""
+        try:
+            folder_path = self.openImportExportGraphDialog()
+            if folder_path is None:
+                return
+
+            # firsly check if the folder graphs exists in the plugin folder
+            graphs_folder_path = os.path.join(os.path.dirname(__file__), "graphs")
+
+            # remove all active layers realted to graphs
+            remove_graphs_layers()
+
+            if os.path.exists(graphs_folder_path):
+                shutil.rmtree(graphs_folder_path)
+
+            shutil.copytree(folder_path, graphs_folder_path)
+
+            print("Graphs successfully imported!")
+            iface.messageBar().pushMessage(
+                "Success!",
+                "Graphs successfully imported!",
+                level=Qgis.Success,
+                duration=5,
+            )
+        except Exception as e:
+            print(f"Error during the importation of the graphs: {e}")
+            return
+
+    def on_click_delete_all_data(self):
+        """Delete all data from graph folder, shapefiles folder, polygons folder and database"""
+        # appear a pop-up that ask the user if he is sure to delete all data
+        messageBox = QtWidgets.QMessageBox(self)
+        messageBox.setWindowTitle("Warning!")
+        messageBox.setText(
+            "<b>Are you sure to delete all data?</b>\nThis operation is irreversible"
+        )
+        messageBox.setStandardButtons(
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+        )
+        messageBox.setDefaultButton(QtWidgets.QMessageBox.No)
+        messageBox.setIcon(QtWidgets.QMessageBox.Warning)
+        messageBox.buttonClicked.connect(self.delete_all_data)
+        messageBox.exec_()
+        return
+
+    def delete_all_data(self):
+        print("Deleting all data...")
+        remove_all_project_layers()
+        delete_all_project_folders()
+
+        print("All data successfully deleted!")
+        iface.messageBar().pushMessage(
+            "Success!",
+            "All data successfully deleted!",
+            level=Qgis.Success,
+            duration=5,
+        )
+
     def get_result(self):
         return self.result

@@ -9,12 +9,11 @@ from .inputs import Inputs
 class Analysis(Inputs):
     def start_analysis(self):
         """Start the analysis process by asking the user the analysis type and then calling the function that does the analysis"""
-        project = QgsProject.instance()
 
-        remove_layers(project)
+        # add here all the operation to perform before starting the analysis
 
-        # crea e carica il layer di debug
-        create_debug_layer()
+        # create and load the debug layer
+        # create_debug_layer()
 
         # ask the user the analysis type
         self.select_analysis_type()

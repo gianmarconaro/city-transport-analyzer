@@ -1,4 +1,4 @@
-from qgis.PyQt.QtCore import Qt, QVariant
+from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QIntValidator
 from qgis.PyQt.QtWidgets import (
     QLineEdit,
@@ -10,13 +10,7 @@ from qgis.PyQt.QtWidgets import (
     QComboBox,
     QCompleter,
 )
-from qgis.core import (
-    QgsProject,
-    QgsGeometry,
-    QgsPointXY,
-    QgsFields,
-    QgsField,
-)
+from qgis.core import QgsProject
 from qgis.utils import iface
 from qgis.core import Qgis
 
@@ -27,7 +21,6 @@ from .service_area_analysis import *
 from .nearby_stops_paths_analysis import *
 
 import networkx as nx
-import osmnx as ox
 
 
 def get_inputs_from_dialog_multi_analysis(inputs):
@@ -83,21 +76,34 @@ def get_inputs_from_dialog_multi_analysis(inputs):
     )
     layout.addWidget(inputs.checkbox)
 
-    label = QLabel("Select the ID of the stop to analyse the nearby stops:")
+    label = QLabel("Select the points layer to analyse the nearby stops:")
     layout.addWidget(label)
 
-    # create the combo box
-    stop_ids = Database().select_all_stops_id()
-    stop_ids.sort(key=lambda x: x[0])
-    inputs.stop_id_combo_box = QComboBox()
-    inputs.stop_id_combo_box.addItems([stop_id[0] for stop_id in stop_ids])
-    inputs.stop_id_combo_box.setPlaceholderText("Stop ID")
-    inputs.stop_id_combo_box.setEditable(True)
-    inputs.stop_id_combo_box.setMaxVisibleItems(10)
-    compleater = QCompleter([stop_id[0] for stop_id in stop_ids])
+    # create combo box
+    layers = QgsProject.instance().mapLayers()
+    vector_layers = []
+    active_vector_layers_names = []
+
+    for layer in layers.values():
+        if layer.type() == QgsMapLayer.VectorLayer:
+            vector_layers.append(layer)
+
+    for layer in vector_layers:
+        if layer.geometryType() == QgsWkbTypes.PointGeometry:
+            active_vector_layers_names.append(layer.name())
+
+    inputs.stops_combo_box = QComboBox()
+    inputs.stops_combo_box.addItems(active_vector_layers_names)
+    inputs.stops_combo_box.setPlaceholderText("Points Layer")
+    inputs.stops_combo_box.setEditable(True)
+    inputs.stops_combo_box.setMaxVisibleItems(5)
+
+    # define compleater
+    compleater = QCompleter(active_vector_layers_names)
     compleater.setCaseSensitivity(Qt.CaseInsensitive)
-    inputs.stop_id_combo_box.setCompleter(compleater)
-    layout.addWidget(inputs.stop_id_combo_box)
+
+    inputs.stops_combo_box.setCompleter(compleater)
+    layout.addWidget(inputs.stops_combo_box)
 
     label = QLabel("Insert the range of the nearby stops analysis:")
     layout.addWidget(label)
@@ -134,7 +140,7 @@ def get_inputs_from_dialog_multi_analysis(inputs):
         return get_inputs_from_dialog_multi_analysis()
 
     stop_info = Database().select_stop_coordinates_by_id(
-        inputs.stop_id_combo_box.currentText()
+        inputs.stops_combo_box.currentText()
     )
 
     points = []
@@ -142,9 +148,13 @@ def get_inputs_from_dialog_multi_analysis(inputs):
     points_layer = QgsProject.instance().mapLayersByName(layer_name)[0]
     for feature in points_layer.getFeatures():
         points.append(feature.geometry().asPoint())
-
-    stop_id = inputs.stop_id_combo_box.currentText()
     time = inputs.time_line_edit.text()
+
+    stop_points = []
+    layer_name = inputs.points_combo_box.currentText()
+    points_layer = QgsProject.instance().mapLayersByName(layer_name)[0]
+    for feature in points_layer.getFeatures():
+        stop_points.append(feature.geometry().asPoint())
     range = inputs.range_line_edit.text()
 
     precise_analysis = inputs.checkbox.isChecked()
@@ -152,7 +162,7 @@ def get_inputs_from_dialog_multi_analysis(inputs):
     # managing errors
     handle_multi_analysis_inputs_errors(range, time)
 
-    return points, stop_id, int(range), int(time), precise_analysis, stop_info[0]
+    return points, stop_points, int(range), int(time), precise_analysis
 
 
 def handle_multi_analysis_inputs_errors(range, time):
@@ -186,11 +196,10 @@ def start_multi_analysis(
     try:
         (
             points,
-            current_stop_id,
+            stop_points,
             range,
             time,
             checkbox,
-            stop_info,
         ) = get_inputs_from_dialog_multi_analysis(inputs)
     except TypeError:
         return
@@ -201,6 +210,4 @@ def start_multi_analysis(
     service_area_analysis_operations(crs, points, time, checkbox, G, G_walk)
 
     # nearby stops analysis
-    nearby_stops_paths_analysis_operations(
-        inputs, crs, current_stop_id, range, stop_info, G_walk
-    )
+    nearby_stops_paths_analysis_operations(inputs, crs, stop_points, range, G_walk)

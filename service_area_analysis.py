@@ -1,4 +1,4 @@
-from qgis.PyQt.QtCore import QVariant, Qt
+from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QIntValidator
 from qgis.PyQt.QtWidgets import (
     QInputDialog,
@@ -14,15 +14,12 @@ from qgis.PyQt.QtWidgets import (
 from qgis.core import (
     QgsProject,
     QgsGeometry,
-    QgsPointXY,
-    QgsFields,
-    QgsField,
     QgsWkbTypes,
     QgsMapLayer,
+    Qgis,
 )
 
 from qgis.utils import iface
-from qgis.core import Qgis
 
 from .resources import *
 from .analysis_functions import *
@@ -112,7 +109,6 @@ def get_inputs_from_dialog_service_area(inputs):
         points.append(feature.geometry().asPoint())
     time = inputs.time_line_edit.text()
 
-    # managing errors
     handle_service_area_input_errors(time)
 
     precise_analysis = inputs.checkbox.isChecked()
@@ -138,7 +134,6 @@ def start_service_area_analysis(
     inputs, starting_dialog: QInputDialog, G: nx.DiGraph, G_walk: nx.MultiDiGraph
 ):
     """Start the service area analysis"""
-    # prendi i punti del layer e calcola il nearest node al grafo per ogni punto, poi per ogni punto calcola il service area
 
     # close the previous dialog
     if starting_dialog:
@@ -151,6 +146,39 @@ def start_service_area_analysis(
     crs = QgsProject.instance().crs()
 
     service_area_analysis_operations(crs, points, time, checkbox, G, G_walk)
+
+
+def create_convex_hull_layer(selected_id_dict: dict):
+    """Create a layer with the convex hull of the reachable nodes"""
+    layer = QgsProject.instance().mapLayersByName('service_area')[0]
+    convex_hull_layer = QgsVectorLayer('Polygon?crs=' + layer.crs().authid(), f'convex_polygons', 'memory')
+
+    for _, selected_id in selected_id_dict.items():
+        # deselect all the features
+        layer.removeSelection()
+
+        # select only the features with the selected id
+        layer.selectByIds(selected_id)
+
+        selected_geometry = None
+
+        for feat in layer.selectedFeatures():
+            feature_geometry = feat.geometry()
+            if selected_geometry is None:
+                selected_geometry = feature_geometry
+            else:
+                selected_geometry = selected_geometry.combine(feature_geometry)
+
+        # convert the geometry to a convex hull
+        convex_hull = selected_geometry.convexHull()
+
+        convex_hull_layer.startEditing()
+        convex_hull_feature = QgsFeature()
+        convex_hull_feature.setGeometry(convex_hull)
+        convex_hull_layer.addFeature(convex_hull_feature)
+        convex_hull_layer.commitChanges()
+
+    QgsProject.instance().addMapLayer(convex_hull_layer)
 
 
 def service_area_analysis_operations(
@@ -167,17 +195,9 @@ def service_area_analysis_operations(
         current_nearest_node = ox.nearest_nodes(G, point[0], point[1])
         nearest_nodes.append(current_nearest_node)
 
-    for i, point in enumerate(nearest_nodes, 1):
-        x_coord = G.nodes[point]["x"]
-        y_coord = G.nodes[point]["y"]
+    create_and_load_layer_starting_points(crs, nearest_nodes, G)
 
-        starting_point = QgsPointXY(x_coord, y_coord)
-        starting_point_geometry = QgsGeometry.fromPointXY(starting_point)
+    selected_id_dict = create_and_load_layer_reachable_nodes(G, crs, nearest_nodes, time, G_walk, checkbox)
 
-        fields = QgsFields()
-        fields.append(QgsField("Lat", QVariant.Double))
-        fields.append(QgsField("Lon", QVariant.Double))
+    create_convex_hull_layer(selected_id_dict)
 
-        create_and_load_layer_starting_point(crs, fields, starting_point_geometry, i)
-
-        create_and_load_layer_reachable_nodes(G, crs, point, time, G_walk, checkbox, i)

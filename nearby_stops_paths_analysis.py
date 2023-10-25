@@ -1,4 +1,4 @@
-from qgis.PyQt.QtCore import QVariant, Qt
+from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QIntValidator
 from qgis.PyQt.QtWidgets import (
     QInputDialog,
@@ -6,28 +6,23 @@ from qgis.PyQt.QtWidgets import (
     QDialog,
     QVBoxLayout,
     QLabel,
-    QCheckBox,
     QDialogButtonBox,
     QComboBox,
     QCompleter,
 )
 from qgis.core import (
     QgsProject,
-    QgsGeometry,
-    QgsPointXY,
-    QgsFields,
-    QgsField,
     QgsWkbTypes,
     QgsMapLayer,
+    QgsSpatialIndex,
+    Qgis,
 )
 
 from qgis.utils import iface
-from qgis.core import Qgis
 
 from .resources import *
 
 from .analysis_functions import *
-from .gtfs_db import Database
 
 from collections import defaultdict
 import networkx as nx
@@ -103,7 +98,7 @@ def get_inputs_from_dialog_nearby_stops_paths(inputs):
             duration=5,
         )
         return get_inputs_from_dialog_nearby_stops_paths()
-    
+
     points = []
     layer_name = inputs.points_combo_box.currentText()
     points_layer = QgsProject.instance().mapLayersByName(layer_name)[0]
@@ -139,29 +134,24 @@ def start_nearby_stops_paths_analysis(
         starting_dialog.close()
 
     try:
-        points, range = get_inputs_from_dialog_nearby_stops_paths(
-            inputs
-        )
+        points, range = get_inputs_from_dialog_nearby_stops_paths(inputs)
     except TypeError:
         return
 
     crs = QgsProject.instance().crs()
 
-    nearby_stops_paths_analysis_operations(
-        inputs, crs, points, range, G_walk
-    )
+    nearby_stops_paths_analysis_operations(inputs, crs, points, range, G_walk)
 
 
-def find_intersections(inputs, i):
+def find_intersections(inputs):
     """Find the intersections between the drive graph and the shortest paths"""
 
-    if i == 1:
-        directory = inputs._path + "/intersections"
-        if not os.path.exists(directory):
-            os.makedirs(directory)
+    directory = inputs._path + "/intersections"
+    if not os.path.exists(directory):
+        os.makedirs(directory)
 
     LAYER_NAME_DRIVE_GRAPH = "drive_graph"
-    LAYER_NAME_SHORTEST_PATH = f"shortest_paths_{i}"
+    LAYER_NAME_SHORTEST_PATH = f"shortest_paths"
 
     project = QgsProject.instance()
     drive_graph_layer = project.mapLayersByName(LAYER_NAME_DRIVE_GRAPH)[0]
@@ -192,7 +182,7 @@ def find_intersections(inputs, i):
                 intersections_dict[(osmid, street_name)] += 1
 
     # write the result into a txt file
-    with open(inputs._path + f"/intersections/intersections_{i}.txt", "w") as outfile:
+    with open(inputs._path + f"/intersections/intersections.txt", "w") as outfile:
         for (id, street_name), occurrences in intersections_dict.items():
             outfile.write(f"{id} - {street_name}: {occurrences}\n")
 
@@ -209,59 +199,29 @@ def nearby_stops_paths_analysis_operations(
     stops_layer = QgsProject.instance().mapLayersByName("stops")[0]
     stops_index = QgsSpatialIndex(stops_layer.getFeatures())
 
-    nearest_stop_ids= []
+    nearest_stop_ids = []
     for point in points:
         nearest_stop = stops_index.nearestNeighbor(point, 1)[0]
         stop_feature = stops_layer.getFeature(nearest_stop)
         current_stop_id = stop_feature["ID"]
+        current_stop_name = stop_feature["Stop_name"]
         current_stop_point = stop_feature.geometry().asPoint()
-        nearest_stop_ids.append([current_stop_id, current_stop_point])     
-
-    for i, stop in enumerate(nearest_stop_ids, 1):
-        current_stop_id = stop[0]
-        current_stop_name = stop[1]
-        x_coord = stop[1][0]
-        y_coord = stop[1][1]
-
-        starting_point = QgsPointXY(x_coord, y_coord)
-        starting_point_geometry = QgsGeometry.fromPointXY(starting_point)
-
-        fields = QgsFields()
-        fields.append(QgsField("ID", QVariant.String))
-        fields.append(QgsField("Stop_name", QVariant.String))
-
-        create_and_load_layer_starting_point(crs, fields, starting_point_geometry, i, True)
-
-        current_stop_transports = Database().select_transports_by_stop_id(current_stop_id)
-        current_stop_transports_list = [
-            transport[0] for transport in current_stop_transports
-        ]
-
-        circular_buffer = create_and_load_layer_circular_buffer(
-            crs, starting_point_geometry, stops_layer, range, i
+        nearest_stop_ids.append(
+            [current_stop_id, current_stop_name, current_stop_point]
         )
 
-        selected_stops = create_and_load_layer_selected_stops(
-            crs,
-            fields,
-            stops_layer,
-            circular_buffer,
-            current_stop_transports_list,
-            current_stop_id,
-            i,
+    transport_list = create_and_load_layer_starting_stops(crs, nearest_stop_ids)
+
+    circular_buffer_list = create_and_load_layer_circular_buffer(
+        crs, nearest_stop_ids, stops_layer, range
+    )
+
+    selected_stops_dict, selected = create_and_load_layer_selected_stops(
+        crs, stops_layer, circular_buffer_list, transport_list, nearest_stop_ids
+    )
+
+    if selected:
+        create_and_load_layer_shortest_paths(
+            crs, nearest_stop_ids, selected_stops_dict, G_walk
         )
-
-        starting_point_nearest_node = ox.nearest_nodes(G_walk, x_coord, y_coord)
-
-        starting_stop_info = [
-            current_stop_id,
-            current_stop_name,
-            starting_point_nearest_node,
-        ]
-
-        if selected_stops:
-            create_and_load_layer_shortest_paths(
-                crs, selected_stops, starting_stop_info, G_walk, i
-            )
-
-            find_intersections(inputs, i)
+        find_intersections(inputs)
