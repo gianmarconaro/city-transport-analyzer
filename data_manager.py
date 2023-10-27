@@ -6,28 +6,62 @@ import os
 import shutil
 
 
+def get_number_analysis():
+    """Calculate the number of the analysis to do"""
+    project = QgsProject.instance()
+
+    layers_to_check = [
+        "service_area_",
+        "shortest_paths_",
+        "starting_points_",
+        "starting_stops_",
+        "selected_stops_",
+        "circular_buffer_",
+        "convex_polygons_",
+    ]
+
+    layers_number = []
+
+    # for each layer, check if exists and if exists, get the higher number of the layer
+    for layer_to_check in layers_to_check:
+        layers = project.mapLayers().values()
+        layers = [layer for layer in layers if layer.name().startswith(layer_to_check)]
+        for layer in layers:
+            layer_name = layer.name()
+            layer_number = layer_name.split("_")[-1]
+            print(layer_name, layer_number)
+            if layer_number.isnumeric():
+                layers_number.append(int(layer_number))
+
+    if layers_number:
+        return max(layers_number) + 1
+    else:
+        return 1
+
+
 def remove_all_project_layers():
     """Delete all data from graph folder, shapefiles folder, polygons folder and database"""
     project = QgsProject.instance()
 
     layers_to_remove = [
-        "stops",
-        "routes_graph",
-        "pedestrian_graph",
-        "drive_graph",
-        "circular_buffer",
-        "selected_stops",
-        "shortest_paths",
-        "starting_points",
-        "starting_stops",
-        "service_area",
-        "convex_polygons",
+        "circular_buffer_",
+        "selected_stops_",
+        "shortest_paths_",
+        "starting_points_",
+        "starting_stops_",
+        "service_area_",
+        "convex_polygons_",
     ]
 
-    for layer in layers_to_remove:
-        layers = project.mapLayersByName(layer)
-        for layer in layers:
-            project.removeMapLayer(layer)
+    remove_stops_layer()
+    remove_graphs_layers()
+
+    for layer in project.instance().mapLayers().values():
+        for layer_to_remove in layers_to_remove:
+            if layer.name().startswith(layer_to_remove):
+                last_char = layer.name()[-1]
+                if last_char.isnumeric():
+                    project.removeMapLayer(layer)
 
 
 def delete_all_project_folders():

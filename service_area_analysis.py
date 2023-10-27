@@ -22,6 +22,7 @@ from qgis.utils import iface
 
 from .resources import *
 from .analysis_functions import *
+from .data_manager import get_number_analysis
 
 import networkx as nx
 
@@ -144,13 +145,24 @@ def start_service_area_analysis(
 
     crs = QgsProject.instance().crs()
 
-    service_area_analysis_operations(crs, points, time, checkbox, G, G_walk)
+    number_analysis = get_number_analysis()
+
+    service_area_analysis_operations(crs, points, time, checkbox, G, G_walk, number_analysis)
 
 
-def create_convex_hull_layer(selected_id_dict: dict):
+def create_convex_hull_layer(selected_id_dict: dict, number_analysis: int):
     """Create a layer with the convex hull of the reachable nodes"""
-    layer = QgsProject.instance().mapLayersByName('service_area')[0]
-    convex_hull_layer = QgsVectorLayer('Polygon?crs=' + layer.crs().authid(), f'convex_polygons', 'memory')
+    layers = QgsProject.instance().mapLayers().values()
+    service_area_layer = [
+        layer for layer in layers if layer.name().startswith("service_area_")
+    ]
+    layer = service_area_layer[-1]
+
+    convex_hull_layer = QgsVectorLayer(
+        "Polygon?crs=" + layer.crs().authid(),
+        f"convex_polygons_{number_analysis}",
+        "memory",
+    )
 
     for _, selected_id in selected_id_dict.items():
         # deselect all the features
@@ -177,6 +189,8 @@ def create_convex_hull_layer(selected_id_dict: dict):
         convex_hull_layer.addFeature(convex_hull_feature)
         convex_hull_layer.commitChanges()
 
+        layer.removeSelection()
+
     QgsProject.instance().addMapLayer(convex_hull_layer)
 
 
@@ -187,6 +201,7 @@ def service_area_analysis_operations(
     checkbox: bool,
     G: nx.DiGraph,
     G_walk: nx.MultiDiGraph,
+    number_analysis: int,
 ):
     """Operations for service area analysis"""
     nearest_nodes = []
@@ -194,9 +209,10 @@ def service_area_analysis_operations(
         current_nearest_node = ox.nearest_nodes(G, point[0], point[1])
         nearest_nodes.append(current_nearest_node)
 
-    create_and_load_layer_starting_points(crs, nearest_nodes, G)
+    create_and_load_layer_starting_points(crs, nearest_nodes, G, number_analysis)
 
-    selected_id_dict = create_and_load_layer_reachable_nodes(G, crs, nearest_nodes, time, G_walk, checkbox)
+    selected_id_dict = create_and_load_layer_reachable_nodes(
+        G, crs, nearest_nodes, time, G_walk, checkbox, number_analysis
+    )
 
-    create_convex_hull_layer(selected_id_dict)
-
+    create_convex_hull_layer(selected_id_dict, number_analysis)

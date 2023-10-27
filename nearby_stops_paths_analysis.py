@@ -23,6 +23,7 @@ from qgis.utils import iface
 from .resources import *
 
 from .analysis_functions import *
+from .data_manager import get_number_analysis
 
 from collections import defaultdict
 import networkx as nx
@@ -139,10 +140,12 @@ def start_nearby_stops_paths_analysis(
 
     crs = QgsProject.instance().crs()
 
-    nearby_stops_paths_analysis_operations(inputs, crs, points, range, G_walk)
+    number_analysis = get_number_analysis()
+
+    nearby_stops_paths_analysis_operations(inputs, crs, points, range, G_walk, number_analysis)
 
 
-def find_intersections(inputs):
+def find_intersections(inputs, number_analysis: int):
     """Find the intersections between the drive graph and the shortest paths"""
 
     directory = inputs._path + "/intersections"
@@ -181,7 +184,7 @@ def find_intersections(inputs):
                 intersections_dict[(osmid, street_name)] += 1
 
     # write the result into a txt file
-    with open(inputs._path + f"/intersections/intersections.txt", "w") as outfile:
+    with open(inputs._path + f"/intersections/intersections_{number_analysis}.txt", "w") as outfile:
         for (id, street_name), occurrences in intersections_dict.items():
             outfile.write(f"{id} - {street_name}: {occurrences}\n")
 
@@ -192,6 +195,7 @@ def nearby_stops_paths_analysis_operations(
     points: list,
     range: int,
     G_walk: nx.MultiDiGraph,
+    number_analysis: int,
 ):
     """Operations for nearby stops analysis"""
     # create a spatial index for the stops layer (the bigger one)
@@ -209,18 +213,18 @@ def nearby_stops_paths_analysis_operations(
             [current_stop_id, current_stop_name, current_stop_point]
         )
 
-    transport_list = create_and_load_layer_starting_stops(crs, nearest_stop_ids)
+    transport_list = create_and_load_layer_starting_stops(crs, nearest_stop_ids, number_analysis)
 
     circular_buffer_list = create_and_load_layer_circular_buffer(
-        crs, nearest_stop_ids, stops_layer, range
+        crs, nearest_stop_ids, stops_layer, range, number_analysis
     )
 
     selected_stops_dict, selected = create_and_load_layer_selected_stops(
-        crs, stops_layer, circular_buffer_list, transport_list, nearest_stop_ids
+        crs, stops_layer, circular_buffer_list, transport_list, nearest_stop_ids, number_analysis
     )
 
     if selected:
         create_and_load_layer_shortest_paths(
-            crs, nearest_stop_ids, selected_stops_dict, G_walk
+            crs, nearest_stop_ids, selected_stops_dict, G_walk, number_analysis
         )
-        find_intersections(inputs)
+        find_intersections(inputs, number_analysis)

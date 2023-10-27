@@ -73,6 +73,7 @@ def create_and_load_layer_circular_buffer(
     nearest_stops: list,
     stops_layer: QgsVectorLayer,
     range: int,
+    number_analysis: int,
 ):
     """Create a layer to store the circular buffer and fill it with the circular buffer"""
 
@@ -81,7 +82,7 @@ def create_and_load_layer_circular_buffer(
     circular_buffer_list = []
 
     circular_buffer_layer = QgsVectorLayer(
-        "Polygon?crs=" + crs.authid(), f"circular_buffer", "memory"
+        "Polygon?crs=" + crs.authid(), f"circular_buffer_{number_analysis}", "memory"
     )
 
     for stop in nearest_stops:
@@ -131,6 +132,7 @@ def create_and_load_layer_selected_stops(
     circular_buffer_list: list,
     transport_list: list,
     stops: list,
+    number_analysis: int,
 ):
     """Create a layer to store the selected stops and fill it with the selected stops"""
 
@@ -147,7 +149,7 @@ def create_and_load_layer_selected_stops(
     fields.append(QgsField("Transports", QVariant.String))
 
     selected_stops_layer = QgsVectorLayer(
-        "Point?crs=" + crs.authid(), f"selected_stops", "memory"
+        "Point?crs=" + crs.authid(), f"selected_stops_{number_analysis}", "memory"
     )
 
     selected_stops_layer.dataProvider().addAttributes(fields)
@@ -225,6 +227,7 @@ def create_and_load_layer_shortest_paths(
     nearest_stops: list,
     selected_stops_dict: dict,
     G_walk: nx.Graph,
+    number_analysis: int,
 ):
     """Create a layer to store the shortest paths and fill it with the shortest paths"""
 
@@ -233,7 +236,7 @@ def create_and_load_layer_shortest_paths(
         return
 
     shortest_paths_layer = QgsVectorLayer(
-        "LineString?crs=" + crs.authid(), f"shortest_paths", "memory"
+        "LineString?crs=" + crs.authid(), f"shortest_paths_{number_analysis}", "memory"
     )
 
     fields = QgsFields()
@@ -315,6 +318,7 @@ def create_and_load_layer_reachable_nodes(
     time_limit: int,
     G_walk: nx.Graph,
     checkbox: bool,
+    number_analysis: int,
 ):
     """Calculate reachable edges in a time limit"""
 
@@ -348,7 +352,7 @@ def create_and_load_layer_reachable_nodes(
         reachable_edges_list.append(reachable_edges)
 
     selected_id = load_layer_reachable_edges(
-        G, crs, reachable_edges_list, G_walk, checkbox
+        G, crs, reachable_edges_list, G_walk, checkbox, number_analysis
     )
 
     return selected_id
@@ -360,6 +364,7 @@ def load_layer_reachable_edges(
     reachable_edges_list: list,
     G_walk: nx.Graph,
     checkbox: bool,
+    number_analysis: int,
 ):
     """Create a layer to store the service area and fill it with the service area"""
     # print the number of list elements
@@ -368,7 +373,7 @@ def load_layer_reachable_edges(
         return
 
     service_area_layer = QgsVectorLayer(
-        "LineString?crs=" + crs.authid(), f"service_area", "memory"
+        "LineString?crs=" + crs.authid(), f"service_area_{number_analysis}", "memory"
     )
 
     fields = QgsFields()
@@ -443,7 +448,10 @@ def load_layer_reachable_edges(
 
 
 def create_and_load_layer_starting_points(
-    crs: QgsCoordinateReferenceSystem, nearest_nodes: list, G: nx.DiGraph
+    crs: QgsCoordinateReferenceSystem,
+    nearest_nodes: list,
+    G: nx.DiGraph,
+    number_analysis: int,
 ):
     """Create a layer to store the starting points and fill it with the starting points"""
 
@@ -454,7 +462,7 @@ def create_and_load_layer_starting_points(
     fields.append(QgsField("Lon", QVariant.Double))
 
     starting_points_layer = QgsVectorLayer(
-        "Point?crs=" + crs.authid(), "starting_points", "memory"
+        "Point?crs=" + crs.authid(), f"starting_points_{number_analysis}", "memory"
     )
 
     starting_points_layer.dataProvider().addAttributes(fields)
@@ -482,7 +490,7 @@ def create_and_load_layer_starting_points(
 
 
 def create_and_load_layer_starting_stops(
-    crs: QgsCoordinateReferenceSystem, nearest_stops: list
+    crs: QgsCoordinateReferenceSystem, nearest_stops: list, number_analysis: int
 ):
     """Create a layer to store the starting stops and fill it with the starting stops"""
 
@@ -496,7 +504,7 @@ def create_and_load_layer_starting_stops(
     fields.append(QgsField("Transports", QVariant.String))
 
     starting_stops_layer = QgsVectorLayer(
-        "Point?crs=" + crs.authid(), "starting_stops", "memory"
+        "Point?crs=" + crs.authid(), f"starting_stops_{number_analysis}", "memory"
     )
 
     starting_stops_layer.dataProvider().addAttributes(fields)

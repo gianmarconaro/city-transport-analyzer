@@ -34,13 +34,13 @@ from qgis.utils import iface
 
 from pathlib import Path
 from .data_manager import *
+from .inputs import Inputs
 
 import os
 import shutil
 import zipfile
 import sqlite3
 import csv
-import time
 
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
@@ -49,7 +49,7 @@ FORM_CLASS, _ = uic.loadUiType(
 )
 
 
-class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
+class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
     def __init__(self, parent=None):
         """Constructor."""
         super(route_trackingDialog, self).__init__(parent)
@@ -161,7 +161,7 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
                 return
 
             remove_stops_layer()
-            delete_shapefiles_folder()
+            QTimer.singleShot(2000, delete_shapefiles_folder)
 
             self.extract_gtfs_data(zip_file)
 
@@ -265,6 +265,9 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
                 if os.path.isfile(db_path):
                     os.remove(db_path)
 
+            # remove_stops_layer()
+            # QTimer.singleShot(1000, delete_shapefiles_folder)
+
             # CSV file to extract from the ZIP file
             csv_to_extract = [
                 "shapes.txt",
@@ -280,11 +283,9 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
             progress_dialog = QProgressDialog(self)
             progress_dialog.setWindowTitle("Importing GTFS Data")
             progress_dialog.setLabelText("Importing GTFS data...")
-            progress_dialog.setCancelButton(
-                None
-            )  # Rimuove il pulsante di cancellazione
+            progress_dialog.setCancelButton(None)
             progress_dialog.setMinimumDuration(0)
-            progress_dialog.setWindowModality(2)  # Finestra modale
+            progress_dialog.setWindowModality(2)
             progress_dialog.setMaximum(files_number)
 
             # temporary directory
@@ -386,35 +387,44 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS):
 
     def on_click_import_graph_folder(self):
         """permit the user to select a folder where there is the graph folder and then copy the graph folder in the plugin folder"""
+        # delete cache folder
         try:
-            folder_path = self.openImportGraphDialog()
-            if folder_path is None:
-                return
-
-            # firsly check if the folder graphs exists in the plugin folder
-            graphs_folder_path = os.path.join(os.path.dirname(__file__), "graphs")
-
             # remove all active layers realted to graphs
             remove_graphs_layers()
+            QTimer.singleShot(1000, self.add_new_graphs_after_delay)
 
-            if os.path.exists(graphs_folder_path):
-                shutil.rmtree(graphs_folder_path)
+            # set the graphs None
+            Inputs.reset_graphs(self)
 
-            shutil.copytree(folder_path, graphs_folder_path)
-
-            print("Graphs successfully imported!")
-            iface.messageBar().pushMessage(
-                "Success!",
-                "Graphs successfully imported!",
-                level=Qgis.Success,
-                duration=5,
-            )
         except Exception as e:
             print(f"Error during the importation of the graphs: {e}")
             return
 
+    def add_new_graphs_after_delay(self):
+        """Add new graphs after a delay"""
+        folder_path = self.openImportGraphDialog()
+        if folder_path is None:
+            return
+
+        # firsly check if the folder graphs exists in the plugin folder
+        graphs_folder_path = os.path.join(os.path.dirname(__file__), "graphs")
+
+        if os.path.exists(graphs_folder_path):
+            shutil.rmtree(graphs_folder_path)
+
+        shutil.copytree(folder_path, graphs_folder_path)
+
+        print("Graphs successfully imported!")
+        iface.messageBar().pushMessage(
+            "Success!",
+            "Graphs successfully imported!",
+            level=Qgis.Success,
+            duration=5,
+        )
+
     def on_click_delete_all_data(self):
         """Delete all data from graph folder, shapefiles folder, polygons folder and database"""
+        # delete cache
         # appear a pop-up that ask the user if he is sure to delete all data
         messageBox = QtWidgets.QMessageBox(self)
         messageBox.setWindowTitle("Warning!")

@@ -206,8 +206,10 @@ def start_multi_analysis(
 
     crs = QgsProject.instance().crs()
 
+    number_analysis = get_number_analysis()
+
     # service area analysis
-    service_area_analysis_operations(crs, points, time, checkbox, G, G_walk)
+    service_area_analysis_operations(crs, points, time, checkbox, G, G_walk, number_analysis)
 
     # nearby stops analysis
-    nearby_stops_paths_analysis_operations(inputs, crs, stop_points, range, G_walk)
+    nearby_stops_paths_analysis_operations(inputs, crs, stop_points, range, G_walk, number_analysis)

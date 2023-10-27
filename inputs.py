@@ -77,9 +77,7 @@ class Inputs:
     def load_graphs(self):
         print("Loading graphs...")
         # create a progressive bar
-        self.progress_dialog = QProgressDialog(
-            iface.mainWindow()
-        )
+        self.progress_dialog = QProgressDialog(iface.mainWindow())
         self.progress_dialog.setWindowTitle("Loading Graphs")
         self.progress_dialog.setLabelText("Loading graphs...")
         self.progress_dialog.setCancelButton(None)
@@ -104,24 +102,31 @@ class Inputs:
             QgsApplication.processEvents()
 
             G_WALK = G_WALK or ox.load_graphml(
-            GRAPH_PATH_GML_WALK,
-            node_dtypes={"fid": int, "osmid": str, "x": float, "y": float},
-            edge_dtypes={
-                "fid": int,
-                "u": str,
-                "v": str,
-                "key": int,
-                "weight": float,
-                "transport": str,
-                "from": str,
-                "to": str,
-            },
-        )
-            
+                GRAPH_PATH_GML_WALK,
+                node_dtypes={"fid": int, "osmid": str, "x": float, "y": float},
+                edge_dtypes={
+                    "fid": int,
+                    "u": str,
+                    "v": str,
+                    "key": int,
+                    "weight": float,
+                    "transport": str,
+                    "from": str,
+                    "to": str,
+                },
+            )
+
         for i in range(51, 101):
-            self.progress_bar.setValue(i*2)
+            self.progress_bar.setValue(i * 2)
             G = G or nx.read_graphml(GRAPH_PATH_GML_ROUTE)
 
         print("Graphs loaded")
         self.progress_dialog.close()
         return G, G_WALK
+
+    def reset_graphs(self):
+        """Update the graphs"""
+        # reset the value of the graphs
+        global G, G_WALK
+        G = None
+        G_WALK = None
