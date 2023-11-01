@@ -153,28 +153,28 @@ def find_intersections(inputs, number_analysis: int):
         os.makedirs(directory)
 
     LAYER_NAME_DRIVE_GRAPH = "drive_graph"
-    LAYER_NAME_SHORTEST_PATH = f"shortest_paths"
+    LAYER_NAME_SHORTEST_PATH = f"shortest_paths_{number_analysis}"
 
     project = QgsProject.instance()
     drive_graph_layer = project.mapLayersByName(LAYER_NAME_DRIVE_GRAPH)[0]
-    service_area_layer = project.mapLayersByName(LAYER_NAME_SHORTEST_PATH)[0]
+    shortest_path_layer = project.mapLayersByName(LAYER_NAME_SHORTEST_PATH)[0]
 
     intersections_dict = defaultdict(list)
 
     # create a spatial index for the drive graph layer (the bigger one)
     drive_graph_index = QgsSpatialIndex(drive_graph_layer.getFeatures())
 
-    for service_area_feature in service_area_layer.getFeatures():
-        service_area_geometry = service_area_feature.geometry()
+    for service_area_feature in shortest_path_layer.getFeatures():
+        shortest_path_geometry = service_area_feature.geometry()
         intersecting_drive_graph_ids = drive_graph_index.intersects(
-            service_area_geometry.boundingBox()
+            shortest_path_geometry.boundingBox()
         )
 
         for drive_graph_id in intersecting_drive_graph_ids:
             drive_graph_feature = drive_graph_layer.getFeature(drive_graph_id)
             drive_graph_geometry = drive_graph_feature.geometry()
 
-            if service_area_geometry.intersects(drive_graph_geometry):
+            if shortest_path_geometry.intersects(drive_graph_geometry):
                 osmid = drive_graph_feature["osmid"]
                 street_name = drive_graph_feature["name"]
 

@@ -29,7 +29,6 @@ def get_number_analysis():
         for layer in layers:
             layer_name = layer.name()
             layer_number = layer_name.split("_")[-1]
-            print(layer_name, layer_number)
             if layer_number.isnumeric():
                 layers_number.append(int(layer_number))
 
