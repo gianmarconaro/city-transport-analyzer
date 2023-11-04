@@ -9,6 +9,8 @@ from qgis.PyQt.QtWidgets import (
     QDialogButtonBox,
     QComboBox,
     QCompleter,
+    QApplication,
+    QProgressDialog,
 )
 from qgis.core import (
     QgsProject,
@@ -16,6 +18,7 @@ from qgis.core import (
     QgsMapLayer,
     QgsSpatialIndex,
     Qgis,
+    QgsCoordinateReferenceSystem,
 )
 
 from qgis.utils import iface
@@ -148,10 +151,6 @@ def start_nearby_stops_paths_analysis(
 def find_intersections(inputs, number_analysis: int):
     """Find the intersections between the drive graph and the shortest paths"""
 
-    directory = inputs._path + "/intersections"
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-
     LAYER_NAME_DRIVE_GRAPH = "drive_graph"
     LAYER_NAME_SHORTEST_PATH = f"shortest_paths_{number_analysis}"
 
@@ -159,13 +158,20 @@ def find_intersections(inputs, number_analysis: int):
     drive_graph_layer = project.mapLayersByName(LAYER_NAME_DRIVE_GRAPH)[0]
     shortest_path_layer = project.mapLayersByName(LAYER_NAME_SHORTEST_PATH)[0]
 
-    intersections_dict = defaultdict(list)
+    fields = QgsFields()
+    fields.append(QgsField('osmid', QVariant.String))
+    fields.append(QgsField('name', QVariant.String))
+    fields.append(QgsField('intersection_count', QVariant.Int))
+
+    intersections_layer = QgsVectorLayer('LineString?crs=epsg:4326', f'intersections_{number_analysis}', 'memory')
+    intersections_layer.dataProvider().addAttributes(fields)
+    intersections_layer.updateFields()
 
     # create a spatial index for the drive graph layer (the bigger one)
     drive_graph_index = QgsSpatialIndex(drive_graph_layer.getFeatures())
 
-    for service_area_feature in shortest_path_layer.getFeatures():
-        shortest_path_geometry = service_area_feature.geometry()
+    for shortest_path_feature in shortest_path_layer.getFeatures():
+        shortest_path_geometry = shortest_path_feature.geometry()
         intersecting_drive_graph_ids = drive_graph_index.intersects(
             shortest_path_geometry.boundingBox()
         )
@@ -178,16 +184,24 @@ def find_intersections(inputs, number_analysis: int):
                 osmid = drive_graph_feature["osmid"]
                 street_name = drive_graph_feature["name"]
 
-                if osmid not in intersections_dict:
-                    intersections_dict[(osmid, street_name)] = 1
+                found_intersection = None
+                for intersection in intersections_layer.getFeatures():
+                    if intersection["osmid"] == osmid:
+                        found_intersection = intersection
+                        break
 
-                intersections_dict[(osmid, street_name)] += 1
-
-    # write the result into a txt file
-    with open(inputs._path + f"/intersections/intersections_{number_analysis}.txt", "w") as outfile:
-        for (id, street_name), occurrences in intersections_dict.items():
-            outfile.write(f"{id} - {street_name}: {occurrences}\n")
-
+                if found_intersection is not None:
+                    intersections_layer.startEditing()
+                    intersections_layer.changeAttributeValue(found_intersection.id(), 2, found_intersection["intersection_count"] + 1)
+                    intersections_layer.commitChanges()
+                else:
+                    feature = QgsFeature(fields)
+                    feature.setGeometry(drive_graph_geometry)
+                    feature.setAttributes([osmid, street_name, 1])
+                    intersections_layer.dataProvider().addFeatures([feature])
+            
+    intersections_layer.updateExtents()
+    project.addMapLayer(intersections_layer)
 
 def nearby_stops_paths_analysis_operations(
     inputs,
@@ -198,9 +212,21 @@ def nearby_stops_paths_analysis_operations(
     number_analysis: int,
 ):
     """Operations for nearby stops analysis"""
+    progress_bar = QProgressDialog()
+    progress_bar.setWindowTitle("Nearby Stops Paths Analysis")
+    progress_bar.setLabelText("Analysis in progress...")
+    progress_bar.setCancelButtonText(None)
+    progress_bar.setMinimum(0)
+    progress_bar.setMaximum(100)
+    progress_bar.setWindowModality(2)
+    progress_bar.setValue(0)
+
     # create a spatial index for the stops layer (the bigger one)
     stops_layer = QgsProject.instance().mapLayersByName("stops")[0]
     stops_index = QgsSpatialIndex(stops_layer.getFeatures())
+
+    progress_bar.show()
+    QApplication.processEvents()
 
     nearest_stop_ids = []
     for point in points:
@@ -214,17 +240,28 @@ def nearby_stops_paths_analysis_operations(
         )
 
     transport_list = create_and_load_layer_starting_stops(crs, nearest_stop_ids, number_analysis)
+    
+    progress_bar.setValue(20)
 
     circular_buffer_list = create_and_load_layer_circular_buffer(
         crs, nearest_stop_ids, stops_layer, range, number_analysis
     )
 
+    progress_bar.setValue(40)
+
     selected_stops_dict, selected = create_and_load_layer_selected_stops(
         crs, stops_layer, circular_buffer_list, transport_list, nearest_stop_ids, number_analysis
     )
+
+    progress_bar.setValue(60)
 
     if selected:
         create_and_load_layer_shortest_paths(
             crs, nearest_stop_ids, selected_stops_dict, G_walk, number_analysis
         )
+
+        progress_bar.setValue(80)
+
         find_intersections(inputs, number_analysis)
+
+    progress_bar.setValue(100)

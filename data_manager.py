@@ -1,4 +1,5 @@
 from qgis.core import QgsProject
+from qgis.utils import iface
 
 from .resources import *
 
@@ -50,6 +51,7 @@ def remove_all_project_layers():
         "starting_stops_",
         "service_area_",
         "convex_polygons_",
+        "intersections_",
     ]
 
     remove_stops_layer()
@@ -62,11 +64,14 @@ def remove_all_project_layers():
                 if last_char.isnumeric():
                     project.removeMapLayer(layer)
 
+    canvas = iface.mapCanvas()
+    canvas.refresh()
+
 
 def delete_all_project_folders():
     """Delete all data from graph folder, shapefiles folder, polygons folder and database"""
 
-    folders_to_remove = ["graphs", "shapefiles", "polygons", "intersections", "GTFS_DB"]
+    folders_to_remove = ["graphs", "shapefiles", "polygons", "GTFS_DB"]
 
     for folder in folders_to_remove:
         folder_path = os.path.join(os.path.dirname(__file__), folder)
@@ -90,6 +95,9 @@ def remove_stops_layer():
         layers = project.mapLayersByName(layer_pattern)
         for layer in layers:
             project.removeMapLayer(layer)
+
+    canvas = iface.mapCanvas()
+    canvas.refresh()
 
 
 def delete_shapefiles_folder():

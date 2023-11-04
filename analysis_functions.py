@@ -1,5 +1,6 @@
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QColor
+from qgis.PyQt.QtWidgets import QProgressDialog
 
 from qgis.core import (
     QgsProject,

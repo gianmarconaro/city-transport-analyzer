@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>388</width>
-    <height>287</height>
+    <width>477</width>
+    <height>504</height>
    </rect>
   </property>
   <property name="minimumSize">
@@ -22,8 +22,15 @@
   <property name="modal">
    <bool>false</bool>
   </property>
-  <layout class="QGridLayout" name="gridLayout">
-   <item row="1" column="0" colspan="3">
+  <layout class="QGridLayout" name="gridLayout_4">
+   <item row="0" column="0">
+    <widget class="QLabel" name="label">
+     <property name="text">
+      <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;&lt;span style=&quot; font-size:10pt; font-weight:600;&quot;&gt;Prepare your GTFS data&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="0">
     <widget class="QLabel" name="label_3">
      <property name="font">
       <font>
@@ -35,11 +42,11 @@
       </font>
      </property>
      <property name="text">
-      <string>- &lt;b&gt;Import GTFS&lt;/b&gt;: Import new GTFS files</string>
+      <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;- &lt;span style=&quot; font-weight:600;&quot;&gt;Import GTFS&lt;/span&gt;: Import new GTFS files&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
      </property>
     </widget>
    </item>
-   <item row="2" column="0" colspan="4">
+   <item row="2" column="0">
     <widget class="QLabel" name="label_5">
      <property name="enabled">
       <bool>true</bool>
@@ -55,89 +62,171 @@
      </property>
     </widget>
    </item>
-   <item row="3" column="0" colspan="4">
+   <item row="3" column="0">
+    <widget class="QLabel" name="label_12">
+     <property name="text">
+      <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;- &lt;span style=&quot; font-weight:600;&quot;&gt;Delete Stops Layer: &lt;/span&gt;Remove stops layer from project&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+     </property>
+    </widget>
+   </item>
+   <item row="4" column="0">
+    <widget class="QLabel" name="label_8">
+     <property name="text">
+      <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;- &lt;span style=&quot; font-weight:600;&quot;&gt;Delete alla data:&lt;/span&gt; Delete every active layers and folders&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+     </property>
+    </widget>
+   </item>
+   <item row="5" column="0">
     <widget class="QLabel" name="label_6">
      <property name="text">
       <string>- &lt;b&gt;Export Graphs&lt;/b&gt;: Export and save the graphs folder </string>
      </property>
     </widget>
    </item>
-   <item row="4" column="0" colspan="4">
+   <item row="6" column="0">
     <widget class="QLabel" name="label_7">
      <property name="text">
       <string>- &lt;b&gt;Import Graphs&lt;/b&gt;: Import and save the graphs folder</string>
      </property>
     </widget>
    </item>
-   <item row="5" column="0" colspan="3">
+   <item row="7" column="0">
+    <widget class="QLabel" name="label_13">
+     <property name="text">
+      <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;- &lt;span style=&quot; font-weight:600;&quot;&gt;Delete Graph Layers:&lt;/span&gt; Remove all layers involving graphs&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+     </property>
+    </widget>
+   </item>
+   <item row="8" column="0">
+    <widget class="QLabel" name="label_14">
+     <property name="text">
+      <string>- &lt;b&gt;Generate Graphs:&lt;/b&gt; Create graphs from GTFS data</string>
+     </property>
+    </widget>
+   </item>
+   <item row="9" column="0">
     <widget class="QLabel" name="label_2">
      <property name="text">
       <string>- &lt;b&gt;Next&lt;/b&gt;: Start analysis (all data must be imported)</string>
      </property>
     </widget>
    </item>
-   <item row="6" column="0" colspan="2">
+   <item row="10" column="0">
     <widget class="QLabel" name="label_4">
      <property name="text">
       <string>- &lt;b&gt;Close&lt;/b&gt;: Exit from the plugin</string>
      </property>
     </widget>
    </item>
-   <item row="7" column="0">
-    <widget class="QPushButton" name="GTFSButton">
+   <item row="11" column="0">
+    <widget class="QLabel" name="label_10">
      <property name="text">
-      <string>Import GTFS</string>
+      <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;GTFS Data Management &lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
      </property>
     </widget>
    </item>
-   <item row="7" column="1">
-    <widget class="QPushButton" name="polygonButton">
+   <item row="12" column="0">
+    <layout class="QGridLayout" name="gridLayout">
+     <item row="0" column="0">
+      <widget class="QPushButton" name="GTFSButton">
+       <property name="text">
+        <string>Import GTFS</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="QPushButton" name="polygonButton">
+       <property name="text">
+        <string>Import Polygons</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="0">
+      <widget class="QPushButton" name="stopsButton">
+       <property name="text">
+        <string>Delete Stops Layer</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="1">
+      <widget class="QPushButton" name="deleteButton">
+       <property name="text">
+        <string>Delete all data</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item row="13" column="0">
+    <widget class="QLabel" name="label_11">
      <property name="text">
-      <string>Import Polygons</string>
+      <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;Graphs Data Management &lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
      </property>
     </widget>
    </item>
-   <item row="7" column="2">
-    <widget class="QPushButton" name="exportButton">
+   <item row="14" column="0">
+    <layout class="QGridLayout" name="gridLayout_2">
+     <item row="0" column="0">
+      <widget class="QPushButton" name="importButton">
+       <property name="text">
+        <string>Import Graphs</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="QPushButton" name="exportButton">
+       <property name="text">
+        <string>Export Graphs</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="0">
+      <widget class="QPushButton" name="deleteGraphsButton">
+       <property name="text">
+        <string>Delete Graph Layers</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="1">
+      <widget class="QPushButton" name="graphsButton">
+       <property name="text">
+        <string>Generate Graphs</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item row="15" column="0">
+    <widget class="QLabel" name="label_9">
      <property name="text">
-      <string>Export Graphs</string>
+      <string/>
      </property>
     </widget>
    </item>
-   <item row="7" column="3">
-    <widget class="QPushButton" name="importButton">
-     <property name="text">
-      <string>Import Graphs</string>
-     </property>
-    </widget>
-   </item>
-   <item row="9" column="0">
-    <widget class="QPushButton" name="closeButton">
-     <property name="text">
-      <string>Close</string>
-     </property>
-    </widget>
-   </item>
-   <item row="9" column="3">
-    <widget class="QPushButton" name="forwardButton">
-     <property name="text">
-      <string>Next</string>
-     </property>
-    </widget>
-   </item>
-   <item row="8" column="0" colspan="4">
-    <widget class="QPushButton" name="deleteButton">
-     <property name="text">
-      <string>Delete all data</string>
-     </property>
-    </widget>
-   </item>
-   <item row="0" column="0" colspan="4">
-    <widget class="QLabel" name="label">
-     <property name="text">
-      <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;&lt;span style=&quot; font-size:10pt; font-weight:600;&quot;&gt;Prepare your GTFS data&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
-     </property>
-    </widget>
+   <item row="16" column="0">
+    <layout class="QGridLayout" name="gridLayout_3">
+     <item row="0" column="0">
+      <widget class="QPushButton" name="closeButton">
+       <property name="text">
+        <string>Close</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="2">
+      <widget class="QPushButton" name="forwardButton">
+       <property name="text">
+        <string>Next</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="QLabel" name="label_15">
+       <property name="text">
+        <string/>
+       </property>
+      </widget>
+     </item>
+    </layout>
    </item>
   </layout>
  </widget>

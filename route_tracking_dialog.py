@@ -26,7 +26,7 @@ from qgis.PyQt import uic
 from qgis.PyQt import QtWidgets
 
 from qgis.PyQt.QtWidgets import QFileDialog, QProgressDialog
-from qgis.PyQt.QtCore import pyqtSlot, QTimer, Qt
+from qgis.PyQt.QtCore import pyqtSlot, QTimer
 
 from qgis.core import Qgis, QgsApplication
 
@@ -50,10 +50,11 @@ FORM_CLASS, _ = uic.loadUiType(
 
 
 class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, route_tracking=None):
         """Constructor."""
         super(route_trackingDialog, self).__init__(parent)
         self.setupUi(self)
+        self.route_tracking = route_tracking
 
         self.GTFSButton.clicked.connect(self.on_click_import_GTFS)
         self.closeButton.clicked.connect(self.on_click_close)
@@ -62,6 +63,9 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
         self.exportButton.clicked.connect(self.on_click_export_graph_folder)
         self.importButton.clicked.connect(self.on_click_import_graph_folder)
         self.deleteButton.clicked.connect(self.on_click_delete_all_data)
+        self.stopsButton.clicked.connect(self.on_click_delete_stops_layer)
+        self.graphsButton.clicked.connect(self.on_click_generate_graphs)
+        self.deleteGraphsButton.clicked.connect(self.on_click_delete_graph_layers)
 
         self.result = False
 
@@ -154,14 +158,26 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
 
     @pyqtSlot()
     def on_click_import_GTFS(self):
+        # if stops layer exists in the project, ask the user to delete it first
+        
+        if QgsProject.instance().mapLayersByName("stops"):
+            # appear a pop-up that alert user to delete stops layer first
+            messageBox = QtWidgets.QMessageBox(self)
+            messageBox.setWindowTitle("Warning!")
+            messageBox.setText(
+                "<b>Stops layer already exists!</b>\nDelete stops layer first"
+            )
+            messageBox.setStandardButtons(QtWidgets.QMessageBox.Ok)
+            messageBox.setDefaultButton(QtWidgets.QMessageBox.Ok)
+            messageBox.setIcon(QtWidgets.QMessageBox.Warning)
+            messageBox.exec_()
+            return
+        
         try:
             # Save the file selected by the user
             zip_file = self.openFileDialog()
             if not zip_file:
                 return
-
-            remove_stops_layer()
-            QTimer.singleShot(2000, delete_shapefiles_folder)
 
             self.extract_gtfs_data(zip_file)
 
@@ -204,21 +220,29 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
             )
             messageBox.exec_()
             return
-
-        # i want the polygon file only if graphs are not already created
+        
         if not os.path.exists(os.path.join(os.path.dirname(__file__), "graphs")):
-            # check if the polygons.txt exists
-            if not os.path.isfile(
-                os.path.join(os.path.dirname(__file__), "polygons", "polygons.txt")
-            ):
-                # create a message box that inform the user that the polygons.txt doesn't exist
-                messageBox = QtWidgets.QMessageBox(self)
-                messageBox.setWindowTitle("Error!")
-                messageBox.setText(
-                    "<b>Polygons not imported!</b>\nImport the polygons before to continue"
-                )
-                messageBox.exec_()
-                return
+            # create a message box that inform the user that the graphs doesn't exist
+            messageBox = QtWidgets.QMessageBox(self)
+            messageBox.setWindowTitle("Error!")
+            messageBox.setText(
+                "<b>Graphs not created or imported!</b>\nCreate or import the graphs before to continue"
+            )
+            messageBox.exec_()
+            return
+        
+        if not QgsProject.instance().mapLayersByName("stops"):
+            # appear a pop-up that alert user to import GTFS data first
+            messageBox = QtWidgets.QMessageBox(self)
+            messageBox.setWindowTitle("Warning!")
+            messageBox.setText(
+                "<b>Stops layer doesn't exist!</b>\nImport GTFS data first"
+            )
+            messageBox.setStandardButtons(QtWidgets.QMessageBox.Ok)
+            messageBox.setDefaultButton(QtWidgets.QMessageBox.Ok)
+            messageBox.setIcon(QtWidgets.QMessageBox.Warning)
+            messageBox.exec_()
+            return
 
         self.result = True
         self.close()
@@ -264,9 +288,6 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
                 db_path = os.path.join(db_folder_path, "gtfs.db")
                 if os.path.isfile(db_path):
                     os.remove(db_path)
-
-            # remove_stops_layer()
-            # QTimer.singleShot(1000, delete_shapefiles_folder)
 
             # CSV file to extract from the ZIP file
             csv_to_extract = [
@@ -329,6 +350,8 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
             conn.close()
 
             shutil.rmtree(temp_dir)
+
+            self.route_tracking.create_stops_layer()
 
             print("GTFS data successfully imported!")
             iface.messageBar().pushMessage(
@@ -414,6 +437,10 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
 
         shutil.copytree(folder_path, graphs_folder_path)
 
+        self.route_tracking.create_pedestrian_layer()
+        self.route_tracking.create_drive_layer()
+        self.route_tracking.create_graph_for_routes()
+
         print("Graphs successfully imported!")
         iface.messageBar().pushMessage(
             "Success!",
@@ -421,6 +448,73 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
             level=Qgis.Success,
             duration=5,
         )
+
+    def on_click_generate_graphs(self):
+        # if in the project there are graphs layers, ask the user to delete them first
+        if QgsProject.instance().mapLayersByName("pedestrian_graph") or QgsProject.instance().mapLayersByName("drive_graph") or QgsProject.instance().mapLayersByName("routes_graph"):
+            # appear a pop-up that alert user to delete graphs layers first
+            messageBox = QtWidgets.QMessageBox(self)
+            messageBox.setWindowTitle("Warning!")
+            messageBox.setText(
+                "<b>Graphs layers already exist!</b>\nDelete graphs layers first"
+            )
+            messageBox.setStandardButtons(QtWidgets.QMessageBox.Ok)
+            messageBox.setDefaultButton(QtWidgets.QMessageBox.Ok)
+            messageBox.setIcon(QtWidgets.QMessageBox.Warning)
+            messageBox.exec_()
+            return
+
+        # check if the polygons.txt exists
+        if not os.path.isfile(
+            os.path.join(os.path.dirname(__file__), "polygons", "polygons.txt")
+        ):
+            # create a message box that inform the user that the polygons.txt doesn't exist
+            messageBox = QtWidgets.QMessageBox(self)
+            messageBox.setWindowTitle("Error!")
+            messageBox.setText(
+                "<b>Polygons not imported!</b>\nImport the polygons before to continue"
+            )
+            messageBox.exec_()
+            return
+        
+        # check if the gtfs.db exists
+        if not os.path.isfile(
+            os.path.join(os.path.dirname(__file__), "GTFS_DB", "gtfs.db")
+        ):
+            # create a message box that inform the user that the gtfs.db doesn't exist
+            messageBox = QtWidgets.QMessageBox(self)
+            messageBox.setWindowTitle("Error!")
+            messageBox.setText(
+                "<b>GTFS Data not imported!</b>\nImport the GTFS Data before to continue"
+            )
+            messageBox.exec_()
+            return
+        
+        # create graphs
+        self.route_tracking.create_pedestrian_layer()
+        self.route_tracking.create_drive_layer()
+        self.route_tracking.create_graph_for_routes()
+
+    def on_click_delete_graph_layers(self):
+        """Delete graphs layers from the project"""
+        # delete cache
+        # appear a pop-up that ask the user if he is sure to delete all data
+        messageBox = QtWidgets.QMessageBox(self)
+        messageBox.setWindowTitle("Warning!")
+        messageBox.setText(
+            "<b>Are you sure to delete graphs layers?</b>\nThis operation is irreversible"
+        )
+        messageBox.setStandardButtons(
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+        )
+        messageBox.setDefaultButton(QtWidgets.QMessageBox.No)
+        messageBox.setIcon(QtWidgets.QMessageBox.Warning)
+        # if presse yes, delete all data
+        messageBox.exec_()
+        if messageBox.result() == QtWidgets.QMessageBox.Yes:
+            remove_graphs_layers()
+        else:
+            return
 
     def on_click_delete_all_data(self):
         """Delete all data from graph folder, shapefiles folder, polygons folder and database"""
@@ -455,6 +549,42 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
         iface.messageBar().pushMessage(
             "Success!",
             "All data successfully deleted!",
+            level=Qgis.Success,
+            duration=5,
+        )
+
+    def on_click_delete_stops_layer(self):
+        """Delete stops layer from the project"""
+        # delete cache
+        # appear a pop-up that ask the user if he is sure to delete all data
+        messageBox = QtWidgets.QMessageBox(self)
+        messageBox.setWindowTitle("Warning!")
+        messageBox.setText(
+            "<b>Are you sure to delete stops layer?</b>\nThis operation is irreversible"
+        )
+        messageBox.setStandardButtons(
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+        )
+        messageBox.setDefaultButton(QtWidgets.QMessageBox.No)
+        messageBox.setIcon(QtWidgets.QMessageBox.Warning)
+        # if presse yes, delete all data
+        messageBox.exec_()
+        if messageBox.result() == QtWidgets.QMessageBox.Yes:
+            self.delete_stops_layer()
+        else:
+            return
+
+    def delete_stops_layer(self):
+        """Remove stops layer from the project"""
+        remove_stops_layer()
+        QTimer.singleShot(1000, self.delete_stops_layer_after_delay)
+
+    def delete_stops_layer_after_delay(self):
+        print("Stops layer successfully deleted!")
+        delete_shapefiles_folder()
+        iface.messageBar().pushMessage(
+            "Success!",
+            "Stops layer successfully deleted!",
             level=Qgis.Success,
             duration=5,
         )

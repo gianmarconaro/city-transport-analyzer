@@ -10,12 +10,17 @@ from qgis.PyQt.QtWidgets import (
     QDialogButtonBox,
     QComboBox,
     QCompleter,
+    QApplication,
+    QProgressDialog,
 )
 from qgis.core import (
     QgsProject,
     QgsWkbTypes,
     QgsMapLayer,
     Qgis,
+    QgsCoordinateReferenceSystem,
+    QgsFeature,
+    QgsVectorLayer,
 )
 
 from qgis.utils import iface
@@ -204,6 +209,17 @@ def service_area_analysis_operations(
     number_analysis: int,
 ):
     """Operations for service area analysis"""
+    progress_bar = QProgressDialog()
+    progress_bar.setWindowTitle("Service Area Analysis")
+    progress_bar.setLabelText("Analysis in progress...")
+    progress_bar.setCancelButtonText(None)
+    progress_bar.setMinimum(0)
+    progress_bar.setMaximum(100)
+    progress_bar.setWindowModality(2)
+    progress_bar.setValue(0)
+    progress_bar.show()
+    QApplication.processEvents()
+
     nearest_nodes = []
     for point in points:
         current_nearest_node = ox.nearest_nodes(G, point[0], point[1])
@@ -211,8 +227,14 @@ def service_area_analysis_operations(
 
     create_and_load_layer_starting_points(crs, nearest_nodes, G, number_analysis)
 
+    progress_bar.setValue(20)
+
     selected_id_dict = create_and_load_layer_reachable_nodes(
         G, crs, nearest_nodes, time, G_walk, checkbox, number_analysis
     )
 
+    progress_bar.setValue(60)
+
     create_convex_hull_layer(selected_id_dict, number_analysis)
+
+    progress_bar.setValue(100)
