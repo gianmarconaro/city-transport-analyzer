@@ -9,7 +9,6 @@ from .utils import change_style_layer
 
 import osmnx as ox
 
-
 class DriveGraph:
     def create_drive_layer(self):
         """Create a layer with drive graph"""

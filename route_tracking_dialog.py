@@ -159,7 +159,7 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
     @pyqtSlot()
     def on_click_import_GTFS(self):
         # if stops layer exists in the project, ask the user to delete it first
-        
+
         if QgsProject.instance().mapLayersByName("stops"):
             # appear a pop-up that alert user to delete stops layer first
             messageBox = QtWidgets.QMessageBox(self)
@@ -172,7 +172,7 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
             messageBox.setIcon(QtWidgets.QMessageBox.Warning)
             messageBox.exec_()
             return
-        
+
         try:
             # Save the file selected by the user
             zip_file = self.openFileDialog()
@@ -220,7 +220,7 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
             )
             messageBox.exec_()
             return
-        
+
         if not os.path.exists(os.path.join(os.path.dirname(__file__), "graphs")):
             # create a message box that inform the user that the graphs doesn't exist
             messageBox = QtWidgets.QMessageBox(self)
@@ -230,13 +230,38 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
             )
             messageBox.exec_()
             return
-        
+
         if not QgsProject.instance().mapLayersByName("stops"):
             # appear a pop-up that alert user to import GTFS data first
             messageBox = QtWidgets.QMessageBox(self)
             messageBox.setWindowTitle("Warning!")
             messageBox.setText(
                 "<b>Stops layer doesn't exist!</b>\nImport GTFS data first"
+            )
+            messageBox.setStandardButtons(QtWidgets.QMessageBox.Ok)
+            messageBox.setDefaultButton(QtWidgets.QMessageBox.Ok)
+            messageBox.setIcon(QtWidgets.QMessageBox.Warning)
+            messageBox.exec_()
+            return
+
+        if (
+            not os.path.exists(
+                os.path.join(
+                    os.path.dirname(__file__), "graphs", "pedestrian_graph.gpkg"
+                )
+            )
+            and not os.path.exists(
+                os.path.join(os.path.dirname(__file__), "graphs", "drive_graph.gpkg")
+            )
+            and not os.path.isfile(
+                os.path.join(os.path.dirname(__file__), "polygons", "polygons.txt")
+            )
+        ):
+            # appear a pop-up that alert user to import GTFS data first
+            messageBox = QtWidgets.QMessageBox(self)
+            messageBox.setWindowTitle("Warning!")
+            messageBox.setText(
+                "<b>Pedestrian and drive graphs don't exist!</b>\nImport the graphs or the polygons before to continue"
             )
             messageBox.setStandardButtons(QtWidgets.QMessageBox.Ok)
             messageBox.setDefaultButton(QtWidgets.QMessageBox.Ok)
@@ -451,7 +476,11 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
 
     def on_click_generate_graphs(self):
         # if in the project there are graphs layers, ask the user to delete them first
-        if QgsProject.instance().mapLayersByName("pedestrian_graph") or QgsProject.instance().mapLayersByName("drive_graph") or QgsProject.instance().mapLayersByName("routes_graph"):
+        if (
+            QgsProject.instance().mapLayersByName("pedestrian_graph")
+            or QgsProject.instance().mapLayersByName("drive_graph")
+            or QgsProject.instance().mapLayersByName("routes_graph")
+        ):
             # appear a pop-up that alert user to delete graphs layers first
             messageBox = QtWidgets.QMessageBox(self)
             messageBox.setWindowTitle("Warning!")
@@ -476,7 +505,7 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
             )
             messageBox.exec_()
             return
-        
+
         # check if the gtfs.db exists
         if not os.path.isfile(
             os.path.join(os.path.dirname(__file__), "GTFS_DB", "gtfs.db")
@@ -489,7 +518,7 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
             )
             messageBox.exec_()
             return
-        
+
         # create graphs
         self.route_tracking.create_pedestrian_layer()
         self.route_tracking.create_drive_layer()

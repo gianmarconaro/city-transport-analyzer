@@ -40,7 +40,7 @@ class PedestrianGraph:
         QApplication.processEvents()
 
         print("Creating pedestrian graph...")
-
+        
         # read the polygon coordinates from the file
         polygon_points = []
         with open(POLYGON_PATH, "r") as file:

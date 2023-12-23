@@ -333,6 +333,7 @@ def create_and_load_layer_reachable_nodes(
         while queue:
             current_node, time_elapsed = queue.popleft()
             # TODO: (1,2) added to visited_edges, but (2,1) is not added. Possible optimization
+            # TODO: Not discard the edge if used one time. Can exludes some important paths
 
             for _, end_node, edge_data in G.out_edges(current_node, data=True):
                 if (current_node, end_node) not in visited_edges:
@@ -544,10 +545,19 @@ def create_and_load_layer_starting_stops(
 def create_debug_layer():
     # define a list with some points, 3 is enough
     points = [
+        # RIO
         # QgsPointXY(-43.195617, -22.906821),
         # QgsPointXY(-43.3246895, -22.8472869),
-        QgsPointXY(9.2006962, 45.4437618),
-        QgsPointXY(9.17593961, 45.49690061),
+
+        # MILANO
+        # QgsPointXY(9.2006962, 45.4437618),
+        # QgsPointXY(9.17593961, 45.49690061),
+
+        # MILANO 2
+        # QgsPointXY(9.1423916, 45.5303945), # NOVATE
+        # QgsPointXY(9.2029287, 45.4525009), # PT ROMANA
+
+        # QgsPointXY(9.2460641, 45.5128699), # Casa Dario
     ]
 
     # create fields

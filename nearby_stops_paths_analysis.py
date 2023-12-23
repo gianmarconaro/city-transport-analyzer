@@ -151,7 +151,7 @@ def start_nearby_stops_paths_analysis(
 def find_intersections(inputs, number_analysis: int):
     """Find the intersections between the drive graph and the shortest paths"""
 
-    LAYER_NAME_DRIVE_GRAPH = "drive_graph"
+    LAYER_NAME_DRIVE_GRAPH = "pedestrian_graph"
     LAYER_NAME_SHORTEST_PATH = f"shortest_paths_{number_analysis}"
 
     project = QgsProject.instance()

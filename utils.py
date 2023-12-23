@@ -39,7 +39,7 @@ def route_type_to_speed(route_type: int) -> int:
     elif route_type == 2:
         return 160
     # bus
-    elif route_type == 3 or route_type == 700 or route_type == 200:
+    elif route_type == 3 or route_type == 700 or route_type == 200 or route_type == 702:
         return 25
     # ferry
     elif route_type == 4:
