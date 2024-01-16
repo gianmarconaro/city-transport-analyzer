@@ -18,10 +18,13 @@ Install them using ***pip*** inside your QGIS environment:
 pip install osmnx scikit-learn shapely
 ```
 
-Clone this repository:
+Clone the repository:
+
 ```bash
 git clone url_directory
 ```
+
+Compress repository folder with .zip.
 
 Then import the plugin into QGIS via .zip file. Go to `Plugins` > `Manage and install Plugin...` > `Install from ZIP` 
 
