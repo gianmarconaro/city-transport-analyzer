@@ -99,7 +99,7 @@ def create_and_load_layer_circular_buffer(
         distance_area.setEllipsoid(project.ellipsoid())
 
         distance_degrees = distance_area.convertLengthMeasurement(
-            range, QgsUnitTypes.DistanceUnit.Degrees
+            range, QgsUnitTypes.DistanceDegrees
         )
 
         # create a circular buffer

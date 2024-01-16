@@ -62,3 +62,30 @@ def route_type_to_speed(route_type: int) -> int:
     # walk
     elif route_type == 15:
         return 5
+
+
+# def import_libs():
+#     import sys
+#     import os
+
+#     working_dir = os.path.dirname(os.path.realpath(__file__))
+#     lib_folder = os.path.join(working_dir, "lib")
+
+#     for lib in os.listdir(lib_folder):
+#         sys.path.append(os.path.join(lib_folder, lib))
+    
+def import_libs():
+    libs = [
+        ['osmnx', 'osmnx', '1.8.0'],
+        ['shapely', 'shapely', '2.0.2'],
+        ['scikit-learn', 'sklearn.neighbors', '1.3.2']
+    ]
+
+    for lib, import_name, version in libs:
+        try:
+            __import__(import_name)
+        except ModuleNotFoundError:
+            print(f'Module {lib} not found. Installing...')
+            from pip._internal import main as pip
+            pip(['install', "--ignore-installed", f"{lib}=={version}"])
+            __import__(import_name)

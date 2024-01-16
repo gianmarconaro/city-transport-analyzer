@@ -32,7 +32,7 @@ class RouteGraph:
         shape = [shape_id, shape_pt_lat, shape_pt_lon, shape_pt_sequence]"""
 
         GRAPH_PATH_GPKG = self._path + "/graphs/routes_graph.gpkg"
-        GRAPH_PATH_GML = self._path + "/graphs/routes_graph.graphml"
+        GRAPH_PATH_GML = self._path + "/graphs/routes_graph.graphml.xml"
         LAYER_NAME = "routes_graph"
 
         project = QgsProject.instance()
@@ -147,7 +147,7 @@ class RouteGraph:
     def modify_graph(self, G: nx.MultiDiGraph):
         """Modifies the graph `G` by merging nodes with the same coordinates and merging stops with the graph."""
 
-        GRAPH_PATH_GML = self._path + "/graphs/pedestrian_graph.graphml"
+        GRAPH_PATH_GML = self._path + "/graphs/pedestrian_graph.graphml.xml"
 
         print("Modifying graph...")
 

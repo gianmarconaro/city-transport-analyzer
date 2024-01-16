@@ -92,8 +92,8 @@ class Inputs:
 
         global G, G_WALK
 
-        GRAPH_PATH_GML_WALK = self._path + "/graphs/pedestrian_graph.graphml"
-        GRAPH_PATH_GML_ROUTE = self._path + "/graphs/routes_graph.graphml"
+        GRAPH_PATH_GML_WALK = self._path + "/graphs/pedestrian_graph.graphml.xml"
+        GRAPH_PATH_GML_ROUTE = self._path + "/graphs/routes_graph.graphml.xml"
 
         self.progress_dialog.show()
 

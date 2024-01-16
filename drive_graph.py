@@ -15,7 +15,7 @@ class DriveGraph:
 
         POLYGON_PATH = self._path + "/polygons/polygons.txt"
         GRAPH_PATH_GPKG = self._path + "/graphs/drive_graph.gpkg"
-        GRAPH_PATH_GML = self._path + "/graphs/drive_graph.graphml"
+        GRAPH_PATH_GML = self._path + "/graphs/drive_graph.graphml.xml"
         GRAPH_NAME = "drive_graph"
 
         project = QgsProject.instance()

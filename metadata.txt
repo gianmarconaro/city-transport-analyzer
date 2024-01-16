@@ -3,17 +3,17 @@
 # This file should be included when you package your plugin.# Mandatory items:
 
 [general]
-name=GTFS Analysis
+name=City Transport Analyzer
 qgisMinimumVersion=3.0
-description=Thesis
+description=Provides Accessibility and Interoperability analysis of a city
 version=0.1
 author=Gianmarco Naro
 email=gianmarco.naro@mail.polimi.it
 
-about=Thesis Description
+about=Starting from the GTFS data, this plugin creates a graph with public transportation information and gives the possiiblity to perform accessibility and interoperability analysis of an urban area
 
 tracker=http://bugs
-repository=http://repo
+repository=https://github.com/gianmarconaro/qgis-plugin
 # End of mandatory metadata
 
 # Recommended items:
@@ -23,10 +23,10 @@ hasProcessingProvider=no
 # changelog=
 
 # Tags are comma separated with spaces allowed
-tags=python
+tags=Python, Vector, GTFS, Graph, Interoperability, Accessibility, OSMnx
 
 homepage=http://homepage
-category=Plugins
+category=Vector
 icon=icon.png
 # experimental flag
 experimental=True
@@ -40,7 +40,7 @@ deprecated=False
 # plugin_dependencies=
 
 Category of the plugin: Raster, Vector, Database or Web
-# category=Web
+# category=Vector
 
 # If the plugin can run on QGIS Server.
 server=False

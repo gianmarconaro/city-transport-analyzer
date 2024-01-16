@@ -1,9 +1,9 @@
 #/***************************************************************************
-# route_tracking
+# RouteTracking
 #
-# Thesis
+# Provides Accessibility and Interoperability analysis of a city
 #							 -------------------
-#		begin				: 2023-03-14
+#		begin				: 2023-12-26
 #		git sha				: $Format:%H$
 #		copyright			: (C) 2023 by Gianmarco Naro
 #		email				: gianmarco.naro@mail.polimi.it
@@ -65,7 +65,7 @@ PEP8EXCLUDE=pydev,resources.py,conf.py,third_party,ui
 #	* Windows:
 #	  AppData\Roaming\QGIS\QGIS3\profiles\default\python\plugins'
 
-QGISDIR=C:\Users\Gianmarco Naro\AppData/Roaming/QGIS/QGIS3/profiles/default/python/plugins
+QGISDIR=C:\Users\gianm\AppData/Roaming/QGIS/QGIS3/profiles/default/python/plugins
 
 #################################################
 # Normally you would not need to edit below here

@@ -1,10 +1,10 @@
 Plugin Builder Results
 
-Your plugin route_tracking was created in:
-    C:/Users/Gianmarco Naro/Desktop/Tesi/Plugin\route_tracking
+Your plugin RouteTracking was created in:
+    C:/Users/gianm/Desktop\route_tracking
 
 Your QGIS plugin directory is located at:
-    C:/Users/Gianmarco Naro/AppData/Roaming/QGIS/QGIS3/profiles/default/python/plugins
+    C:/Users/gianm/AppData/Roaming/QGIS/QGIS3/profiles/default/python/plugins
 
 What's Next:
 
@@ -21,7 +21,7 @@ What's Next:
 
   * Create your own custom icon, replacing the default icon.png
 
-  * Modify your user interface by opening route_tracking_dialog_base.ui in Qt Designer
+  * Modify your user interface by opening RouteTracking_dialog_base.ui in Qt Designer
 
   * You can use the Makefile to compile your Ui and resource files when
     you make changes. This requires GNU make (gmake)

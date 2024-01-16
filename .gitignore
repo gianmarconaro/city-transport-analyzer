@@ -3,6 +3,8 @@ graphs/
 shapefiles/
 polygons/
 intersections/
+.vscode/
+.prettierrc
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
