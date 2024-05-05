@@ -28,7 +28,7 @@ from qgis.PyQt import QtWidgets
 from qgis.PyQt.QtWidgets import QFileDialog, QProgressDialog
 from qgis.PyQt.QtCore import pyqtSlot, QTimer
 
-from qgis.core import Qgis, QgsApplication
+from qgis.core import Qgis, QgsApplication, QgsProject, QgsWkbTypes, QgsMapLayer
 
 from qgis.utils import iface
 
@@ -59,15 +59,38 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
         self.GTFSButton.clicked.connect(self.on_click_import_GTFS)
         self.closeButton.clicked.connect(self.on_click_close)
         self.forwardButton.clicked.connect(self.on_click_forward)
-        self.polygonButton.clicked.connect(self.on_click_polygon)
+        # polygonBox is a combobox. i want it to display the names of the layers in the project that are polygons
+                # get all polygon layers from the project layers
+        # all_layers = QgsProject.instance().mapLayers().values()
+        # # must be only vector layers
+        # vector_layers = [l for l in all_layers if l.type() == QgsMapLayer.VectorLayer]
+        # # get only polygon layers
+        # polygon_layers = [l for l in vector_layers if l.geometryType() == QgsWkbTypes.PolygonGeometry]
+
+        # self.polygonsBox.addItems([layer.name() for layer in polygon_layers])
+        self.populateComboBox()
+        QgsProject.instance().layersAdded.connect(self.populateComboBox)
+        QgsProject.instance().layersRemoved.connect(self.populateComboBox)
+
         self.exportButton.clicked.connect(self.on_click_export_graph_folder)
         self.importButton.clicked.connect(self.on_click_import_graph_folder)
         self.deleteButton.clicked.connect(self.on_click_delete_all_data)
         self.stopsButton.clicked.connect(self.on_click_delete_stops_layer)
         self.graphsButton.clicked.connect(self.on_click_generate_graphs)
         self.deleteGraphsButton.clicked.connect(self.on_click_delete_graph_layers)
+        # self.deletePolygonsButton.clicked.connect(self.on_click_delete_polygon_layer)
 
         self.result = False
+
+    def populateComboBox(self):
+        self.polygonsBox.clear()
+        all_layers = QgsProject.instance().mapLayers().values()
+        # Filter only vector layers
+        vector_layers = [l for l in all_layers if isinstance(l, QgsMapLayer) and l.type() == QgsMapLayer.VectorLayer]
+        # Filter only polygon layers
+        polygon_layers = [l for l in vector_layers if l.geometryType() == QgsWkbTypes.PolygonGeometry]
+        # Add layer names to the combo box
+        self.polygonsBox.addItems([layer.name() for layer in polygon_layers])
 
     # Create a function to open the file dialog and save it in the plugin folder
     def openFileDialog(self):
@@ -250,18 +273,15 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
                     os.path.dirname(__file__), "graphs", "pedestrian_graph.gpkg"
                 )
             )
-            and not os.path.exists(
-                os.path.join(os.path.dirname(__file__), "graphs", "drive_graph.gpkg")
-            )
-            and not os.path.isfile(
-                os.path.join(os.path.dirname(__file__), "polygons", "polygons.txt")
-            )
+            # and not os.path.isfile(
+            #     os.path.join(os.path.dirname(__file__), "polygons", "polygons.txt")
+            # )
         ):
             # appear a pop-up that alert user to import GTFS data first
             messageBox = QtWidgets.QMessageBox(self)
             messageBox.setWindowTitle("Warning!")
             messageBox.setText(
-                "<b>Pedestrian and drive graphs don't exist!</b>\nImport the graphs or the polygons before to continue"
+                "<b>Pedestrian graph does not exist!</b>\nImport the graphs or the polygons before to continue"
             )
             messageBox.setStandardButtons(QtWidgets.QMessageBox.Ok)
             messageBox.setDefaultButton(QtWidgets.QMessageBox.Ok)
@@ -271,37 +291,6 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
 
         self.result = True
         self.close()
-
-    def on_click_polygon(self):
-        try:
-            file_name = self.openFileDialogPolygon()
-            if file_name is None:
-                return
-
-            # check if the folder polygons exists. If exists, delete the file polygons.txt
-            polygons_folder_path = os.path.join(os.path.dirname(__file__), "polygons")
-            if os.path.exists(polygons_folder_path):
-                polygons_path = os.path.join(polygons_folder_path, "polygons.txt")
-                if os.path.isfile(polygons_path):
-                    os.remove(polygons_path)
-
-            # now create the folder polygons if it doesn't exist
-            if not os.path.exists(polygons_folder_path):
-                os.makedirs(polygons_folder_path)
-
-            polygons_path = os.path.join(polygons_folder_path, "polygons.txt")
-            shutil.copyfile(file_name, polygons_path)
-
-            print("Polygons successfully imported!")
-            iface.messageBar().pushMessage(
-                "Success!",
-                "Polygons successfully imported!",
-                level=Qgis.Success,
-                duration=5,
-            )
-        except Exception as e:
-            print(f"Error during the selection of the polygons: {e}")
-            return
 
     def extract_gtfs_data(self, zip_file):
         try:
@@ -473,8 +462,9 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
 
         shutil.copytree(folder_path, graphs_folder_path)
 
-        self.route_tracking.create_pedestrian_layer()
-        self.route_tracking.create_drive_layer()
+        selected_polygon_layer = self.polygonsBox.currentText()
+
+        self.route_tracking.create_pedestrian_layer(selected_polygon_layer)
         self.route_tracking.create_graph_for_routes()
 
         print("Graphs successfully imported!")
@@ -489,7 +479,6 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
         # if in the project there are graphs layers, ask the user to delete them first
         if (
             QgsProject.instance().mapLayersByName("pedestrian_graph")
-            or QgsProject.instance().mapLayersByName("drive_graph")
             or QgsProject.instance().mapLayersByName("routes_graph")
         ):
             # appear a pop-up that alert user to delete graphs layers first
@@ -530,9 +519,10 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
             messageBox.exec_()
             return
 
+        selected_polygon_layer = self.polygonsBox.currentText()
+
         # create graphs
-        self.route_tracking.create_pedestrian_layer()
-        self.route_tracking.create_drive_layer()
+        self.route_tracking.create_pedestrian_layer(selected_polygon_layer)
         self.route_tracking.create_graph_for_routes()
 
     def on_click_delete_graph_layers(self):
@@ -553,6 +543,27 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
         messageBox.exec_()
         if messageBox.result() == QtWidgets.QMessageBox.Yes:
             remove_graphs_layers()
+        else:
+            return
+
+    def on_click_delete_polygon_layer(self):
+        """Delete graphs layers from the project"""
+        # delete cache
+        # appear a pop-up that ask the user if he is sure to delete all data
+        messageBox = QtWidgets.QMessageBox(self)
+        messageBox.setWindowTitle("Warning!")
+        messageBox.setText(
+            "<b>Are you sure to delete polygon graphs layers?</b>\nThis operation is irreversible"
+        )
+        messageBox.setStandardButtons(
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+        )
+        messageBox.setDefaultButton(QtWidgets.QMessageBox.No)
+        messageBox.setIcon(QtWidgets.QMessageBox.Warning)
+        # if presse yes, delete all data
+        messageBox.exec_()
+        if messageBox.result() == QtWidgets.QMessageBox.Yes:
+            remove_polygon_graphs_layers()
         else:
             return
 

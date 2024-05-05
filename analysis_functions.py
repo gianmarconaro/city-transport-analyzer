@@ -15,6 +15,9 @@ from qgis.core import (
     QgsUnitTypes,
     QgsSpatialIndex,
     QgsCoordinateReferenceSystem,
+    QgsMarkerSymbol,
+    QgsRuleBasedRenderer,
+    QgsSymbol,
 )
 
 from .resources import *
@@ -69,22 +72,16 @@ def create_and_load_nearest_starting_point(
     return nearest_node
 
 
-def create_and_load_layer_circular_buffer(
-    crs: QgsCoordinateReferenceSystem,
+def calculate_circular_buffers(
     nearest_stops: list,
     stops_layer: QgsVectorLayer,
     range: int,
-    number_analysis: int,
 ):
-    """Create a layer to store the circular buffer and fill it with the circular buffer"""
+    """Calculate the circular buffers"""
 
     project = QgsProject.instance()
 
     circular_buffer_list = []
-
-    circular_buffer_layer = QgsVectorLayer(
-        "Polygon?crs=" + crs.authid(), f"circular_buffer_{number_analysis}", "memory"
-    )
 
     for stop in nearest_stops:
         x_coord = stop[2][0]
@@ -104,10 +101,75 @@ def create_and_load_layer_circular_buffer(
 
         # create a circular buffer
         circular_buffer = starting_point_geometry.buffer(distance_degrees, segments=32)
-        circular_feature = QgsFeature()
-        circular_feature.setGeometry(circular_buffer)
+        circular_buffer_list.append(circular_buffer)
 
-        circular_buffer_layer.dataProvider().addFeatures([circular_feature])
+    return circular_buffer_list
+
+
+def create_and_load_layer_circular_buffer(
+    crs: QgsCoordinateReferenceSystem,
+    nearest_stops_information: list,
+    number_analysis: int,
+):
+    """Create a layer to store the circular buffer and fill it with the circular buffer"""
+
+    # TODO: numero di tipologie di mezzi
+
+    (
+        circular_buffer_list,
+        stops_id_list,
+        total_stops_list,
+        selected_stops_list,
+        discarded_stops_list,
+        transport_number_list,
+    ) = nearest_stops_information
+
+    project = QgsProject.instance()
+
+    fields = QgsFields()
+    fields.append(QgsField("ID", QVariant.String))
+    fields.append(QgsField("Stop ID", QVariant.String))
+    fields.append(QgsField("# Stops", QVariant.Int))
+    fields.append(QgsField("# Selected Stops", QVariant.Int))
+    fields.append(QgsField("# Discarded Stops", QVariant.Int))
+    fields.append(QgsField("# Transports", QVariant.Int))
+
+    circular_buffer_layer = QgsVectorLayer(
+        "Polygon?crs=" + crs.authid(), f"circular_buffer_{number_analysis}", "memory"
+    )
+
+    circular_buffer_layer.dataProvider().addAttributes(fields)
+    circular_buffer_layer.startEditing()
+
+    for (
+        circular_buffer,
+        stop_id,
+        total_stops,
+        selected_stops,
+        discarded_stops,
+        transport_number,
+    ) in zip(
+        circular_buffer_list,
+        stops_id_list,
+        total_stops_list,
+        selected_stops_list,
+        discarded_stops_list,
+        transport_number_list,
+    ):
+        # create a new feature
+        new_feature = QgsFeature(circular_buffer_layer.fields())
+        new_feature.setGeometry(circular_buffer)
+        new_feature.setAttributes(
+            [
+                circular_buffer_list.index(circular_buffer),
+                stop_id,
+                total_stops,
+                selected_stops,
+                discarded_stops,
+                transport_number,
+            ]
+        )
+        circular_buffer_layer.addFeature(new_feature)
 
         fill_symbol = QgsFillSymbol.createSimple(
             {
@@ -120,11 +182,11 @@ def create_and_load_layer_circular_buffer(
         fill_symbol.setColor(QColor(0, 255, 255, 80))
         circular_buffer_layer.renderer().setSymbol(fill_symbol)
 
-        circular_buffer_list.append(circular_buffer)
+        # circular_buffer_list.append(circular_buffer)
+
+    circular_buffer_layer.commitChanges()
 
     project.addMapLayer(circular_buffer_layer)
-
-    return circular_buffer_list
 
 
 def create_and_load_layer_selected_stops(
@@ -148,6 +210,7 @@ def create_and_load_layer_selected_stops(
     fields.append(QgsField("Stop_name", QVariant.String))
     fields.append(QgsField("Selected", QVariant.Int))
     fields.append(QgsField("Transports", QVariant.String))
+    fields.append(QgsField("SymbolType", QVariant.String))  # Aggiungi un campo per memorizzare il tipo di simbolo
 
     selected_stops_layer = QgsVectorLayer(
         "Point?crs=" + crs.authid(), f"selected_stops_{number_analysis}", "memory"
@@ -159,13 +222,22 @@ def create_and_load_layer_selected_stops(
     # create a spatial index for the stops layer (the bigger one)
     stops_index = QgsSpatialIndex(stops_layer.getFeatures())
 
+    (
+        total_stops_list,
+        stops_id_list,
+        selected_stops_list,
+        discarded_stops_list,
+        transport_number_list,
+    ) = ([], [], [], [], [])
+
     for circular_buffer, starting_transport_list, stop in zip(
         circular_buffer_list, transport_list, stops
     ):
         intersecting_stop_ids = stops_index.intersects(circular_buffer.boundingBox())
         starting_stop_id = stop[0]
 
-        print(f"Starting point transports: ", ", ".join(starting_transport_list))
+        selected_stops, discarded_stops = 0, 0
+        previous_transport_set = set()
 
         for stop_id in intersecting_stop_ids:
             feature = stops_layer.getFeature(stop_id)
@@ -174,15 +246,22 @@ def create_and_load_layer_selected_stops(
             selected_stop_transports = Database().select_transports_by_stop_id(
                 feature["ID"]
             )
+            stops_id_list.append(feature["ID"])
             selected_stop_transports_list = [
                 transport[0] for transport in selected_stop_transports
             ]
             selected_stop_transports_string = ", ".join(selected_stop_transports_list)
 
+            # starting from transport list obtain the number of unique transports
+            transport_set = set(selected_stop_transports_list).union(
+                previous_transport_set
+            )
+            previous_transport_set = transport_set
+
             if circular_buffer.contains(stop_point):
-                new_feature = QgsFeature(selected_stops_layer.fields())
-                new_feature.setGeometry(stop_point)
                 if feature["ID"] != starting_stop_id:
+                    new_feature = QgsFeature(selected_stops_layer.fields())
+                    new_feature.setGeometry(stop_point)
                     if set(starting_transport_list).intersection(
                         set(selected_stop_transports_list)
                     ):
@@ -193,8 +272,11 @@ def create_and_load_layer_selected_stops(
                                 feature["Stop_name"],
                                 0,
                                 selected_stop_transports_string,
+                                'NonSelected'  # Imposta il tipo di simbolo come 'NonSelected'
                             ]
                         )
+                        discarded_stops += 1
+
                     else:
                         new_feature.setAttributes(
                             [
@@ -203,8 +285,10 @@ def create_and_load_layer_selected_stops(
                                 feature["Stop_name"],
                                 1,
                                 selected_stop_transports_string,
+                                'Selected'  # Imposta il tipo di simbolo come 'Selected'
                             ]
                         )
+                        selected_stops += 1
 
                         selected = True
 
@@ -214,13 +298,42 @@ def create_and_load_layer_selected_stops(
 
                     selected_stops_layer.addFeature(new_feature)
 
+        total_stops = selected_stops + discarded_stops
+        total_stops_list.append(total_stops)
+        selected_stops_list.append(selected_stops)
+        discarded_stops_list.append(discarded_stops)
+        transport_number_list.append(len(transport_set))
+
     selected_stops_layer.commitChanges()
 
-    change_style_layer(selected_stops_layer, "square", "yellow", "2", None)
+    # Aggiungi i simboli basati sul tipo di simbolo
+    symbols = {
+        'Selected': QgsMarkerSymbol.createSimple({'name': 'square', 'color': 'yellow', 'size': '2'}),
+        'NonSelected': QgsMarkerSymbol.createSimple({'name': 'square', 'color': 'red', 'size': '2'})
+    }
+
+    renderer = QgsRuleBasedRenderer(QgsSymbol.defaultSymbol(selected_stops_layer.geometryType()))
+    root_rule = renderer.rootRule()
+    for symbol_type, symbol in symbols.items():
+        rule = root_rule.children()[0].clone()
+        rule.setSymbol(symbol)
+        rule.setFilterExpression('"SymbolType" = \'{}\''.format(symbol_type))
+        root_rule.appendChild(rule)
+
+    selected_stops_layer.setRenderer(renderer)
 
     project.addMapLayer(selected_stops_layer)
 
-    return selected_stops_dict, selected
+    nearest_stops_information = [
+        circular_buffer_list,
+        stops_id_list,
+        total_stops_list,
+        selected_stops_list,
+        discarded_stops_list,
+        transport_number_list,
+    ]
+
+    return nearest_stops_information, selected_stops_dict, selected
 
 
 def create_and_load_layer_shortest_paths(
@@ -548,15 +661,12 @@ def create_debug_layer():
         # RIO
         # QgsPointXY(-43.195617, -22.906821),
         # QgsPointXY(-43.3246895, -22.8472869),
-
         # MILANO
         # QgsPointXY(9.2006962, 45.4437618),
         # QgsPointXY(9.17593961, 45.49690061),
-
         # MILANO 2
         # QgsPointXY(9.1423916, 45.5303945), # NOVATE
         # QgsPointXY(9.2029287, 45.4525009), # PT ROMANA
-
         # QgsPointXY(9.2460641, 45.5128699), # Casa Dario
     ]
 

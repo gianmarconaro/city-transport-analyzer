@@ -28,9 +28,7 @@ from .resources import *
 from .analysis_functions import *
 from .data_manager import get_number_analysis
 
-from collections import defaultdict
 import networkx as nx
-import os
 
 
 def get_inputs_from_dialog_nearby_stops_paths(inputs):
@@ -145,44 +143,48 @@ def start_nearby_stops_paths_analysis(
 
     number_analysis = get_number_analysis()
 
-    nearby_stops_paths_analysis_operations(inputs, crs, points, range, G_walk, number_analysis)
+    nearby_stops_paths_analysis_operations(
+        inputs, crs, points, range, G_walk, number_analysis
+    )
 
 
 def find_intersections(inputs, number_analysis: int):
-    """Find the intersections between the drive graph and the shortest paths"""
+    """Find the intersections between the pedestrian graph and the shortest paths"""
 
-    LAYER_NAME_DRIVE_GRAPH = "pedestrian_graph"
+    LAYER_NAME_PEDESTRIAN_GRAPH = "pedestrian_graph"
     LAYER_NAME_SHORTEST_PATH = f"shortest_paths_{number_analysis}"
 
     project = QgsProject.instance()
-    drive_graph_layer = project.mapLayersByName(LAYER_NAME_DRIVE_GRAPH)[0]
+    pedestrian_graph_layer = project.mapLayersByName(LAYER_NAME_PEDESTRIAN_GRAPH)[0]
     shortest_path_layer = project.mapLayersByName(LAYER_NAME_SHORTEST_PATH)[0]
 
     fields = QgsFields()
-    fields.append(QgsField('osmid', QVariant.String))
-    fields.append(QgsField('name', QVariant.String))
-    fields.append(QgsField('intersection_count', QVariant.Int))
+    fields.append(QgsField("osmid", QVariant.String))
+    fields.append(QgsField("name", QVariant.String))
+    fields.append(QgsField("intersection_count", QVariant.Int))
 
-    intersections_layer = QgsVectorLayer('LineString?crs=epsg:4326', f'intersections_{number_analysis}', 'memory')
+    intersections_layer = QgsVectorLayer(
+        "LineString?crs=epsg:4326", f"intersections_{number_analysis}", "memory"
+    )
     intersections_layer.dataProvider().addAttributes(fields)
     intersections_layer.updateFields()
 
-    # create a spatial index for the drive graph layer (the bigger one)
-    drive_graph_index = QgsSpatialIndex(drive_graph_layer.getFeatures())
+    # create a spatial index for the pedestrian graph layer (the bigger one)
+    pedestrian_graph_index = QgsSpatialIndex(pedestrian_graph_layer.getFeatures())
 
     for shortest_path_feature in shortest_path_layer.getFeatures():
         shortest_path_geometry = shortest_path_feature.geometry()
-        intersecting_drive_graph_ids = drive_graph_index.intersects(
+        intersecting_pedestrian_graph_ids = pedestrian_graph_index.intersects(
             shortest_path_geometry.boundingBox()
         )
 
-        for drive_graph_id in intersecting_drive_graph_ids:
-            drive_graph_feature = drive_graph_layer.getFeature(drive_graph_id)
-            drive_graph_geometry = drive_graph_feature.geometry()
+        for pedestrian_graph_id in intersecting_pedestrian_graph_ids:
+            pedestrian_graph_feature = pedestrian_graph_layer.getFeature(pedestrian_graph_id)
+            pedestrian_graph_geometry = pedestrian_graph_feature.geometry()
 
-            if shortest_path_geometry.intersects(drive_graph_geometry):
-                osmid = drive_graph_feature["osmid"]
-                street_name = drive_graph_feature["name"]
+            if shortest_path_geometry.touches(pedestrian_graph_geometry):
+                osmid = pedestrian_graph_feature["osmid"]
+                street_name = pedestrian_graph_feature["name"]
 
                 found_intersection = None
                 for intersection in intersections_layer.getFeatures():
@@ -192,16 +194,21 @@ def find_intersections(inputs, number_analysis: int):
 
                 if found_intersection is not None:
                     intersections_layer.startEditing()
-                    intersections_layer.changeAttributeValue(found_intersection.id(), 2, found_intersection["intersection_count"] + 1)
+                    intersections_layer.changeAttributeValue(
+                        found_intersection.id(),
+                        2,
+                        found_intersection["intersection_count"] + 1,
+                    )
                     intersections_layer.commitChanges()
                 else:
                     feature = QgsFeature(fields)
-                    feature.setGeometry(drive_graph_geometry)
+                    feature.setGeometry(pedestrian_graph_geometry)
                     feature.setAttributes([osmid, street_name, 1])
                     intersections_layer.dataProvider().addFeatures([feature])
-            
+
     intersections_layer.updateExtents()
     project.addMapLayer(intersections_layer)
+
 
 def nearby_stops_paths_analysis_operations(
     inputs,
@@ -239,18 +246,33 @@ def nearby_stops_paths_analysis_operations(
             [current_stop_id, current_stop_name, current_stop_point]
         )
 
-    transport_list = create_and_load_layer_starting_stops(crs, nearest_stop_ids, number_analysis)
-    
+    transport_list = create_and_load_layer_starting_stops(
+        crs, nearest_stop_ids, number_analysis
+    )
+
     progress_bar.setValue(20)
 
-    circular_buffer_list = create_and_load_layer_circular_buffer(
-        crs, nearest_stop_ids, stops_layer, range, number_analysis
+    circular_buffer_list = calculate_circular_buffers(
+        nearest_stop_ids, stops_layer, range
     )
 
     progress_bar.setValue(40)
 
-    selected_stops_dict, selected = create_and_load_layer_selected_stops(
-        crs, stops_layer, circular_buffer_list, transport_list, nearest_stop_ids, number_analysis
+    (
+        nearest_stops_information,
+        selected_stops_dict,
+        selected,
+    ) = create_and_load_layer_selected_stops(
+        crs,
+        stops_layer,
+        circular_buffer_list,
+        transport_list,
+        nearest_stop_ids,
+        number_analysis,
+    )
+
+    create_and_load_layer_circular_buffer(
+        crs, nearest_stops_information, number_analysis
     )
 
     progress_bar.setValue(60)

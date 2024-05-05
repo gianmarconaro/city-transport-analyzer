@@ -13,6 +13,7 @@ from .resources import *
 from .service_area_analysis import *
 from .nearby_stops_paths_analysis import *
 from .multi_analysis import *
+# from .key_points_analysis import *
 
 import networkx as nx
 import osmnx as ox
@@ -44,6 +45,11 @@ class Inputs:
         self.nearby_stops_checkbox.setChecked(False)
         layout.addWidget(self.nearby_stops_checkbox)
 
+        # # create the third checkbox
+        # self.interoperability_checkbox = QCheckBox("Interoperability Analysis")
+        # self.interoperability_checkbox.setChecked(False)
+        # layout.addWidget(self.interoperability_checkbox)
+
         # create the run button
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.accepted.connect(dialog.accept)
@@ -59,18 +65,27 @@ class Inputs:
             if (
                 self.service_area_checkbox.isChecked()
                 and not self.nearby_stops_checkbox.isChecked()
+                # and not self.interoperability_checkbox.isChecked()
             ):
                 start_service_area_analysis(self, dialog, *self.load_graphs())
             if (
                 self.nearby_stops_checkbox.isChecked()
                 and not self.service_area_checkbox.isChecked()
+                # and not self.interoperability_checkbox.isChecked()
             ):
                 start_nearby_stops_paths_analysis(self, dialog, *self.load_graphs())
             if (
                 self.service_area_checkbox.isChecked()
                 and self.nearby_stops_checkbox.isChecked()
+                # and not self.interoperability_checkbox.isChecked()
             ):
                 start_multi_analysis(self, dialog, *self.load_graphs())
+            # if (
+            #     self.interoperability_checkbox.isChecked()
+            #     and not self.nearby_stops_checkbox.isChecked()
+            #     and not self.service_area_checkbox.isChecked()
+            # ):
+            #     start_key_points_analysis(self, dialog, *self.load_graphs())
         else:
             return
 

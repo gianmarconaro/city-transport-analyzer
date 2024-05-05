@@ -30,19 +30,19 @@ def change_style_layer(
 def route_type_to_speed(route_type: int) -> int:
     """Convert route type to speed"""
     # tram
-    if route_type == 0:
+    if route_type in [0, 900, 901, 902, 903, 904, 905, 906]:
         return 23
     # subway, metro
-    elif route_type == 1:
+    elif route_type in [1, 400, 401, 402, 403, 404]:
         return 60
     # rail (long distance travel)
-    elif route_type == 2:
+    elif route_type in [2, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117]:
         return 160
     # bus
-    elif route_type == 3 or route_type == 700 or route_type == 200 or route_type == 702:
+    elif route_type in [3, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 700, 702, 703, 704, 706, 707, 708, 709, 710, 712, 713]:
         return 25
     # ferry
-    elif route_type == 4:
+    elif route_type in [4, 1200]:
         return 40
     # cable tram
     elif route_type == 5:
@@ -51,14 +51,17 @@ def route_type_to_speed(route_type: int) -> int:
     elif route_type == 6:
         return 20
     # funicular
-    elif route_type == 7:
+    elif route_type in [7, 1400]:
         return 25
     # trolleybus
-    elif route_type == 11:
+    elif route_type in [11, 800]:
         return 20
     # monorail
-    elif route_type == 12:
+    elif route_type in [12, 405]:
         return 70
+    # long distance bus
+    elif route_type in [701, 705, 711, 715, 716]:
+        return 100
     # walk
     elif route_type == 15:
         return 5

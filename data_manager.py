@@ -116,8 +116,6 @@ def remove_graphs_layers():
     # layer names pattern
     LAYER_PATTERN = [
         "routes_graph",
-        "pedestrian_graph",
-        "drive_graph",
     ]
 
     # check if the layer is already present. If is present, delete it
@@ -126,3 +124,43 @@ def remove_graphs_layers():
         layers = project.mapLayersByName(layer_pattern)
         for layer in layers:
             project.removeMapLayer(layer)
+
+
+def remove_polygon_graphs_layers():
+    """Remove graphs layers from the project"""
+
+    project = QgsProject.instance()
+
+    # layer names pattern
+    LAYER_PATTERN = [
+        "pedestrian_graph",
+    ]
+
+    # check if the layer is already present. If is present, delete it
+    project = QgsProject.instance()
+    for layer_pattern in LAYER_PATTERN:
+        layers = project.mapLayersByName(layer_pattern)
+        for layer in layers:
+            project.removeMapLayer(layer)
+
+    # i wanna to remove also the file from project folder
+    # remove_cached_graphs("pedestrian_graph.graphml.xml")
+
+
+def remove_cached_graphs():
+    """Remove graph cache files"""
+    # remove 4 files from graphs folder
+    cache_folder = os.path.join(os.path.dirname(__file__), "graphs")
+
+    cache_file_names = [
+        "pedestrian_graph.gpkg",
+        "pedestrian_graph.graphml.xml",
+    ]
+
+    for cache_file_name in cache_file_names:
+        cache_file_path = os.path.join(cache_folder, cache_file_name)
+
+        # check if the file exists. If exists, close it and delete it
+        if os.path.exists(cache_file_path):
+            # delete the file
+            os.remove(cache_file_path)

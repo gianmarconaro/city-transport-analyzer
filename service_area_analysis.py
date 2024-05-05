@@ -44,7 +44,7 @@ def get_inputs_from_dialog_service_area(inputs):
     label = QLabel("Select the points layer to analyse the service area:")
     layout.addWidget(label)
 
-    # create combo box
+    # create combo box - layer selection
     layers = QgsProject.instance().mapLayers()
     vector_layers = []
     active_vector_layers_names = []
@@ -75,8 +75,8 @@ def get_inputs_from_dialog_service_area(inputs):
 
     # create the line edit
     inputs.time_line_edit = QLineEdit()
-    inputs.time_line_edit.setPlaceholderText("Time (m) [5-20]")
-    inputs.time_line_edit.setValidator(QIntValidator(5, 20))
+    inputs.time_line_edit.setPlaceholderText("Time (m) [5-60]")
+    inputs.time_line_edit.setValidator(QIntValidator(5, 60))
     layout.addWidget(inputs.time_line_edit)
 
     # create the checkbox
@@ -152,7 +152,9 @@ def start_service_area_analysis(
 
     number_analysis = get_number_analysis()
 
-    service_area_analysis_operations(crs, points, time, checkbox, G, G_walk, number_analysis)
+    service_area_analysis_operations(
+        crs, points, time, checkbox, G, G_walk, number_analysis
+    )
 
 
 def create_convex_hull_layer(selected_id_dict: dict, number_analysis: int):
@@ -163,13 +165,21 @@ def create_convex_hull_layer(selected_id_dict: dict, number_analysis: int):
     ]
     layer = service_area_layer[-1]
 
+    fields = QgsFields()
+    fields.append(QgsField("ID", QVariant.Int))
+    fields.append(QgsField("Area", QVariant.Double))
+
     convex_hull_layer = QgsVectorLayer(
         "Polygon?crs=" + layer.crs().authid(),
         f"convex_polygons_{number_analysis}",
         "memory",
     )
 
-    for _, selected_id in selected_id_dict.items():
+    convex_hull_layer.dataProvider().addAttributes(fields)
+    convex_hull_layer.updateFields()
+    convex_hull_layer.startEditing()
+
+    for key_id, selected_id in selected_id_dict.items():
         # deselect all the features
         layer.removeSelection()
 
@@ -187,14 +197,20 @@ def create_convex_hull_layer(selected_id_dict: dict, number_analysis: int):
 
         # convert the geometry to a convex hull
         convex_hull = selected_geometry.convexHull()
+        area = convex_hull.area() * (111**2)  # convert to km^2
 
-        convex_hull_layer.startEditing()
-        convex_hull_feature = QgsFeature()
+        convex_hull_feature = QgsFeature(convex_hull_layer.fields())
         convex_hull_feature.setGeometry(convex_hull)
-        convex_hull_layer.addFeature(convex_hull_feature)
-        convex_hull_layer.commitChanges()
+        convex_hull_feature.setAttributes([key_id, area])
 
+        convex_hull_layer.addFeature(convex_hull_feature)
         layer.removeSelection()
+
+    # print the feature data
+    for feature in convex_hull_layer.getFeatures():
+        print(feature.attributes())
+
+    convex_hull_layer.commitChanges()
 
     QgsProject.instance().addMapLayer(convex_hull_layer)
 
@@ -225,6 +241,7 @@ def service_area_analysis_operations(
         current_nearest_node = ox.nearest_nodes(G, point[0], point[1])
         nearest_nodes.append(current_nearest_node)
 
+    # TODO: add the id in modo
     create_and_load_layer_starting_points(crs, nearest_nodes, G, number_analysis)
 
     progress_bar.setValue(20)
