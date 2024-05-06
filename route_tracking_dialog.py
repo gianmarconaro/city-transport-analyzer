@@ -273,9 +273,6 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
                     os.path.dirname(__file__), "graphs", "pedestrian_graph.gpkg"
                 )
             )
-            # and not os.path.isfile(
-            #     os.path.join(os.path.dirname(__file__), "polygons", "polygons.txt")
-            # )
         ):
             # appear a pop-up that alert user to import GTFS data first
             messageBox = QtWidgets.QMessageBox(self)
@@ -493,15 +490,14 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
             messageBox.exec_()
             return
 
-        # check if the polygons.txt exists
-        if not os.path.isfile(
-            os.path.join(os.path.dirname(__file__), "polygons", "polygons.txt")
-        ):
-            # create a message box that inform the user that the polygons.txt doesn't exist
+        # check if the polygon combo box is not empty
+        selected_polygon_layer = self.polygonsBox.currentText()
+        if not selected_polygon_layer:
+            # create a message box that inform the user that the polygon combo box is empty
             messageBox = QtWidgets.QMessageBox(self)
             messageBox.setWindowTitle("Error!")
             messageBox.setText(
-                "<b>Polygons not imported!</b>\nImport the polygons before to continue"
+                "<b>No polygon layer selected!</b>\nSelect a polygon layer before to continue"
             )
             messageBox.exec_()
             return
@@ -518,8 +514,6 @@ class route_trackingDialog(QtWidgets.QDialog, FORM_CLASS, Inputs):
             )
             messageBox.exec_()
             return
-
-        selected_polygon_layer = self.polygonsBox.currentText()
 
         # create graphs
         self.route_tracking.create_pedestrian_layer(selected_polygon_layer)

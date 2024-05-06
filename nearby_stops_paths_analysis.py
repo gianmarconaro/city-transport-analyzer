@@ -182,7 +182,12 @@ def find_intersections(inputs, number_analysis: int):
             pedestrian_graph_feature = pedestrian_graph_layer.getFeature(pedestrian_graph_id)
             pedestrian_graph_geometry = pedestrian_graph_feature.geometry()
 
-            if shortest_path_geometry.touches(pedestrian_graph_geometry):
+            if shortest_path_geometry.touches(pedestrian_graph_geometry) \
+            or shortest_path_geometry.intersects(pedestrian_graph_geometry) \
+            or shortest_path_geometry.crosses(pedestrian_graph_geometry) \
+            or shortest_path_geometry.overlaps(pedestrian_graph_geometry) \
+            or shortest_path_geometry.contains(pedestrian_graph_geometry) \
+            or shortest_path_geometry.within(pedestrian_graph_geometry):
                 osmid = pedestrian_graph_feature["osmid"]
                 street_name = pedestrian_graph_feature["name"]
 
